@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, session, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, session, ipcMain, safeStorage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
@@ -6,6 +6,7 @@ const fs = require('fs');
 // Ensure persistent data directory exists
 const DATA_DIR = path.join(app.getPath('userData'), 'data');
 const MEDIA_DIR = path.join(app.getPath('userData'), 'media');
+const STORE_FILE = path.join(app.getPath('userData'), 'data', 'secure-store.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
@@ -175,6 +176,37 @@ ipcMain.handle('install-update', () => {
     autoUpdater.quitAndInstall();
   }, 100);
   return { success: true };
+});
+
+ipcMain.handle('get-api-key', () => {
+  try {
+    if (!fs.existsSync(STORE_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8'));
+    if (!raw || !raw.apiKey) return null;
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    return safeStorage.decryptString(Buffer.from(raw.apiKey, 'base64'));
+  } catch (err) {
+    console.error('Failed to read API key:', err.message);
+    return null;
+  }
+});
+
+ipcMain.handle('save-api-key', (_event, key) => {
+  try {
+    const value = String(key || '').trim();
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (value) {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('safeStorage is not available');
+      const encrypted = safeStorage.encryptString(value).toString('base64');
+      fs.writeFileSync(STORE_FILE, JSON.stringify({ apiKey: encrypted }));
+    } else if (fs.existsSync(STORE_FILE)) {
+      fs.unlinkSync(STORE_FILE);
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to save API key:', err.message);
+    return false;
+  }
 });
 
 /* ==================== App Lifecycle ==================== */

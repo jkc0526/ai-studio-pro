@@ -344,12 +344,22 @@ const TEMPLATES = [
 /* ==================== Helpers ==================== */
 function val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function getApiKey(){ return localStorage.getItem('agnes_api_key')||''; }
-function saveApiKey(){
+let cachedApiKey = '';
+function getApiKey(){
+  if(window.electronAPI && window.electronAPI.getApiKey) return cachedApiKey||'';
+  return localStorage.getItem('agnes_api_key')||'';
+}
+async function saveApiKey(){
   const k=document.getElementById('apiKey').value.trim();
   if(!k){ showToast('请输入 API Key','error'); return; }
-  localStorage.setItem('agnes_api_key',k);
-  showToast('API Key 已保存','success');
+  if(window.electronAPI && window.electronAPI.saveApiKey){
+    const ok=await window.electronAPI.saveApiKey(k);
+    if(ok){ cachedApiKey=k; showToast('API Key 已安全保存','success'); }
+    else { showToast('API Key 保存失败','error'); }
+  }else{
+    localStorage.setItem('agnes_api_key',k);
+    showToast('API Key 已保存','success');
+  }
 }
 function getAllModels(){ return [...PRESET_MODELS,...customModels]; }
 function getNegPrompt(id){
@@ -1061,7 +1071,10 @@ function updateMentionActive(){
 }
 
 /* ==================== Init ==================== */
-window.addEventListener('load',()=>{
+window.addEventListener('load',async ()=>{
+  if(window.electronAPI && window.electronAPI.getApiKey){
+    try{ cachedApiKey=await window.electronAPI.getApiKey()||''; }catch(e){ cachedApiKey=''; }
+  }
   const saved=getApiKey();
   if(saved) document.getElementById('apiKey').value=saved;
   loadCustomModels();

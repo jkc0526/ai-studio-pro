@@ -5,6 +5,10 @@ window.electronAPI = {
   // App version
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
+  // Secure API key storage (Electron only; renderer falls back to localStorage)
+  getApiKey: () => ipcRenderer.invoke('get-api-key'),
+  saveApiKey: (key) => ipcRenderer.invoke('save-api-key', key),
+
   // Update related
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),
