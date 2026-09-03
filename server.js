@@ -6,6 +6,7 @@ const { execSync, spawn } = require('child_process');
 
 const app = express();
 const PORT = 3000;
+const HOST = process.env.AI_STUDIO_HOST || '127.0.0.1';
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
@@ -94,21 +95,23 @@ app.get('/api/agnesapi', async (req, res) => {
   }
 });
 
-// === Video status query proxy (GET /v1/videos/{videoId}) ===
-app.get('/api/videos/:videoId', async (req, res) => {
+// === Task status query proxy (GET /v1/videos/{taskId}; used by image & video polling) ===
+async function proxyTaskStatus(req, res) {
   const base = getBaseUrl(req);
-  const { videoId } = req.params;
+  const taskId = req.params.videoId || req.params.taskId;
   try {
-    const resp = await fetch(`${base}/v1/videos/${videoId}`, {
+    const resp = await fetch(base + "/v1/videos/" + taskId, {
       headers: { 'Authorization': req.headers.authorization || '' }
     });
     const text = await resp.text();
     res.status(resp.status).setHeader('Content-Type', 'application/json').send(text);
   } catch (err) {
-    console.error('Video status query error:', err.message);
-    res.status(502).json({ error: { message: `Proxy error: ${err.message}` } });
+    console.error('Task status query error:', err.message);
+    res.status(502).json({ error: { message: "Proxy error: " + err.message } });
   }
-});
+}
+app.get('/api/videos/:videoId', proxyTaskStatus);
+app.get('/api/tasks/:taskId', proxyTaskStatus);
 
 // === Generic proxy (for custom API endpoints) ===
 app.post('/api/proxy', async (req, res) => {
@@ -312,8 +315,15 @@ app.get('/api/ffmpeg-check', (req, res) => {
   }
 });
 
-const httpServer = app.listen(PORT, () => {
-  console.log(`\n  AI Studio Pro running at http://localhost:${PORT}\n`);
+const httpServer = app.listen(PORT, HOST, () => {
+  console.log('\n  AI Studio Pro running at http://' + HOST + ':' + PORT + '\n');
+});
+httpServer.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error('\n  Port ' + PORT + ' is already in use. Close the process occupying port ' + PORT + ' and restart.\n');
+  } else {
+    console.error('Server error:', err && err.message ? err.message : err);
+  }
 });
 
 // === Version info ===
