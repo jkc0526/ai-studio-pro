@@ -19,6 +19,19 @@ let serverStarted = false;
 let updateInfo = null;
 let downloadProgress = 0;
 
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+
 function startServer() {
   try {
     require('./server');
@@ -54,6 +67,16 @@ function waitForServer(callback, retries = 30) {
     }
   });
   socket.connect(3000, '127.0.0.1');
+}
+
+function isUpdateFeedConfigured() {
+  try {
+    const pkg = require('./package.json');
+    const url = pkg && pkg.build && pkg.build.win && pkg.build.win.publish && pkg.build.win.publish.url;
+    return app.isPackaged && !!url && url.indexOf('your-update-server.com') === -1;
+  } catch (err) {
+    return false;
+  }
 }
 
 function createWindow() {
@@ -93,7 +116,11 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     // Delay to not block initial render
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
+      if (isUpdateFeedConfigured()) {
+        autoUpdater.checkForUpdates().catch(() => {});
+      } else {
+        console.log('Auto-update check skipped: no update feed configured.');
+      }
     }, 3000);
   });
 }
@@ -211,6 +238,7 @@ ipcMain.handle('save-api-key', (_event, key) => {
 
 /* ==================== App Lifecycle ==================== */
 app.whenReady().then(() => {
+  if (!gotTheLock) return;
   startServer();
 
   waitForServer((success) => {
