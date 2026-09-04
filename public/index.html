@@ -118,13 +118,6 @@ a{color:var(--accent);text-decoration:none}
 .task-progress-bar{height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-top:8px}
 .task-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
 
-/* ===== Card Progress (visible when collapsed) ===== */
-.card-progress-wrap{padding:0 16px 8px;display:flex;align-items:center;gap:10px}
-.card-progress-bar{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
-.card-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#00d69a);border-radius:3px;transition:width .5s ease;animation:progress-shimmer 1.5s infinite}
-.card-progress-text{font-size:12px;color:var(--accent);white-space:nowrap;min-width:80px;text-align:right}
-@keyframes progress-shimmer{0%{opacity:1}50%{opacity:.7}100%{opacity:1}}
-
 /* ===== Create Task Modal ===== */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
@@ -432,58 +425,20 @@ const PRESET_MODELS = [
 ];
 
 /* ==================== Templates ==================== */
-const TEMPLATES = {
-  camera: [
-    {name:'中近景50mm', text:'中近景镜头，50mm焦段，自然景深，人物面部细节清晰，背景柔和虚化，电影质感'},
-    {name:'特写85mm', text:'特写镜头，85mm焦段，浅景深，极致细节，主体突出，背景完全虚化，人像摄影风格'},
-    {name:'全景24mm', text:'全景广角镜头，24mm焦段，广阔视野，环境交代完整，宏大场景，层次丰富'},
-    {name:'推镜头', text:'推镜头，镜头由远及近缓慢推进，逐渐靠近主体，营造聚焦感和紧张感，平滑运动'},
-    {name:'拉镜头', text:'拉镜头，镜头由近及远缓慢后拉，逐渐展示全景，揭示环境，营造开阔感'},
-    {name:'横移', text:'横移镜头，镜头水平移动，侧面平移展示场景，稳定平滑的运动轨迹'},
-    {name:'固定机位', text:'固定机位拍摄，镜头稳定不动，画面构图严谨，适合叙事和对话场景'},
-    {name:'手持', text:'手持摄影风格，画面带有自然晃动感，真实纪录片质感，临场感强'},
-    {name:'过肩', text:'过肩镜头，从人物肩后方拍摄，前景人物虚化，主体清晰，对话场景常用构图'},
-    {name:'荷兰角', text:'荷兰角倾斜构图，画面水平线倾斜，营造不安、紧张或眩晕的视觉心理效果'},
-    {name:'俯拍', text:'俯拍镜头，从高处向下拍摄，上帝视角，展示全貌和空间关系，宏大叙事感'},
-    {name:'仰拍', text:'仰拍镜头，从低处向上拍摄，主体高大威严，强调力量感和压迫感'}
-  ],
-  style: [
-    {name:'无参考', text:''},
-    {name:'写实电影风格', text:'写实电影风格，自然光影，真实质感，电影级色彩调色，浅景深，35mm胶片质感'},
-    {name:'真实3D国漫风格', text:'真实3D国漫风格，精致建模，细腻材质渲染，中国风元素融合3D动画美学'},
-    {name:'皮克斯动画风格', text:'皮克斯动画风格，圆润角色设计，温暖色调，夸张生动的表情，高品质3D渲染'},
-    {name:'国产历史正剧风格', text:'国产历史正剧风格，厚重历史感，考究的服化道，大气庄重的构图，电影级制作'},
-    {name:'超写实摄影风格', text:'超写实摄影风格，极致清晰度，完美曝光，专业级商业摄影质感，8K级细节'},
-    {name:'商业棚拍风格', text:'商业棚拍风格，专业布光，纯色背景，精致妆造，高端商业摄影质感'},
-    {name:'电影概念设计风格', text:'电影概念设计风格，大气场景设计，史诗级氛围，专业影视概念画风格'},
-    {name:'日系动画风格', text:'日系动画风格，赛璐璐上色，精致线稿，柔和色彩，动漫美学'},
-    {name:'国风水墨风格', text:'国风水墨风格，传统中国画意境，水墨晕染，留白构图，东方美学'},
-    {name:'水彩插画风格', text:'水彩插画风格，透明水彩质感，柔和色彩过渡，手绘温度感'},
-    {name:'古典油画风格', text:'古典油画风格，伦勃朗光影，丰富层次，油画质感，古典美学'},
-    {name:'漫画分镜风格', text:'漫画分镜风格，黑白漫画线条，动态构图，分镜叙事感'},
-    {name:'赛博朋克霓虹风格', text:'赛博朋克霓虹风格，霓虹灯光，未来都市，暗色调高对比，科幻氛围'},
-    {name:'科幻概念设计风格', text:'科幻概念设计风格，未来科技感，机械元素，冷色调，宏大世界观'},
-    {name:'暗黑奇幻风格', text:'暗黑奇幻风格，哥特氛围，神秘光影，暗色系，史诗奇幻感'},
-    {name:'复古胶片风格', text:'复古胶片风格，胶片颗粒感，褪色色调，怀旧氛围，80年代质感'},
-    {name:'黏土定格动画风格', text:'黏土定格动画风格，手工黏土质感，温暖色调，童话般的角色造型'},
-    {name:'低多边形3D风格', text:'低多边形3D风格，几何面片构成，简洁色彩，现代设计感'},
-    {name:'极简扁平插画风格', text:'极简扁平插画风格，简洁色块，扁平化设计，现代矢量插画美感'}
-  ],
-  reference: [
-    {name:'无参考', text:''},
-    {name:'人物设定图', text:'人物设定图，正面、侧面、背面三视图，全身展示，白色背景，角色设计稿'},
-    {name:'分镜故事板', text:'分镜故事板，多格分镜排版，镜头序列展示，叙事节奏，电影分镜风格'},
-    {name:'人物三视图', text:'人物三视图，正面视图、侧面视图、背面视图，全身角色设计，标准比例'},
-    {name:'人物对话6宫格', text:'人物对话6宫格，2行3列布局，不同表情和姿态，对话场景展示'},
-    {name:'人物对话9宫格', text:'人物对话9宫格，3行3列布局，丰富表情变化，多角度对话展示'},
-    {name:'人物对话12宫格', text:'人物对话12宫格，3行4列布局，完整表情谱，角色情感演绎'},
-    {name:'故事情节6宫格', text:'故事情节6宫格，2行3列叙事分镜，情节推进，故事板风格'},
-    {name:'故事情节9宫格', text:'故事情节9宫格，3行3列叙事分镜，完整情节线，分镜排版'},
-    {name:'故事情节12宫格', text:'故事情节12宫格，3行4列叙事分镜，完整故事流程，电影分镜板'},
-    {name:'场景四视图', text:'场景四视图，正面、侧面、背面、俯视四个角度，场景设计稿'},
-    {name:'场景六视图', text:'场景六视图，六角度场景展示，全方位环境设计，专业场景设定'}
-  ]
-};
+const TEMPLATES = [
+  {name:'中近景50mm', text:'中近景镜头，50mm焦段，自然景深，人物面部细节清晰，背景柔和虚化，电影质感'},
+  {name:'特写85mm', text:'特写镜头，85mm焦段，浅景深，极致细节，主体突出，背景完全虚化，人像摄影风格'},
+  {name:'全景24mm', text:'全景广角镜头，24mm焦段，广阔视野，环境交代完整，宏大场景，层次丰富'},
+  {name:'推镜头', text:'推镜头，镜头由远及近缓慢推进，逐渐靠近主体，营造聚焦感和紧张感，平滑运动'},
+  {name:'拉镜头', text:'拉镜头，镜头由近及远缓慢后拉，逐渐展示全景，揭示环境，营造开阔感'},
+  {name:'横移', text:'横移镜头，镜头水平移动，侧面平移展示场景，稳定平滑的运动轨迹'},
+  {name:'固定机位', text:'固定机位拍摄，镜头稳定不动，画面构图严谨，适合叙事和对话场景'},
+  {name:'手持', text:'手持摄影风格，画面带有自然晃动感，真实纪录片质感，临场感强'},
+  {name:'过肩', text:'过肩镜头，从人物肩后方拍摄，前景人物虚化，主体清晰，对话场景常用构图'},
+  {name:'荷兰角', text:'荷兰角倾斜构图，画面水平线倾斜，营造不安、紧张或眩晕的视觉心理效果'},
+  {name:'俯拍', text:'俯拍镜头，从高处向下拍摄，上帝视角，展示全貌和空间关系，宏大叙事感'},
+  {name:'仰拍', text:'仰拍镜头，从低处向上拍摄，主体高大威严，强调力量感和压迫感'}
+];
 
 /* ==================== Helpers ==================== */
 function val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
@@ -761,12 +716,8 @@ function renderCreateModalFields(){
   updateRefTable();
 }
 
-function renderTplOptgroup(label,key){
-  const items=TEMPLATES[key]||[];
-  return `<optgroup label="${label}">${items.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('')}</optgroup>`;
-}
 function renderImageModalFields(m){
-  const tplOpts=renderTplOptgroup('运镜','camera')+renderTplOptgroup('风格','style')+renderTplOptgroup('参考','reference');
+  const tplOpts=TEMPLATES.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('');
   const sizeOpts=m.sizes.map(s=>`<option value="${s}">${s}</option>`).join('');
   const ratioOpts=m.ratios.map(r=>`<option value="${r}">${r}</option>`).join('');
   return `
@@ -805,7 +756,7 @@ function renderImageModalFields(m){
 }
 
 function renderVideoModalFields(m){
-  const tplOpts=renderTplOptgroup('运镜','camera')+renderTplOptgroup('风格','style')+renderTplOptgroup('参考','reference');
+  const tplOpts=TEMPLATES.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('');
   const modeTabs=(m.modes||['text','reference','keyframe']).map(mode=>{
     const labels={text:'文生视频',reference:'参考图',keyframe:'关键帧'};
     return `<div class="mode-tab${mode==='text'?' active':''}" data-mode="${mode}" onclick="selectModeTab(this)">${labels[mode]||mode}</div>`;
@@ -1159,7 +1110,6 @@ async function generateImage(){
   if(!prompt){ showToast('请输入 Prompt','error'); currentTask.status='failed'; currentTask.error='Prompt为空'; saveTasks(); renderTaskList(); return; }
   setGenerating(true);
   try{
-    currentTask.progress=5; currentTask.statusText='提交中...'; renderTaskList();
     const body={ model:currentModel.modelId, prompt, size:currentTask.params.size, aspect_ratio:currentTask.params.aspect_ratio };
     const imgs=currentTask.params.images||[];
     if(imgs.length) body.images=imgs;
@@ -1167,7 +1117,6 @@ async function generateImage(){
     if(neg) body.negative_prompt=neg;
     const seed=currentTask.params.seed;
     if(seed) body.seed=seed;
-    currentTask.progress=15; currentTask.statusText='请求生成中...'; renderTaskList();
     let resp=await fetch('/api/images/generations',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
     const respText=await resp.text();
     let data; try{ data=JSON.parse(respText); }catch(e){ throw new Error(respText||`HTTP ${resp.status}`); }
@@ -1175,19 +1124,18 @@ async function generateImage(){
     // Extract URL from response
     let imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.output?.[0]||data.images?.[0];
     if(imgUrl){
-      currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
       await completeTaskWithMedia(currentTask,imgUrl);
       return;
     }
     // Poll if task_id present
     if(data.task_id||data.id||data.request_id){
       currentTask.backendTaskId=data.task_id||data.id||data.request_id;
-      currentTask.progress=20; currentTask.statusText='排队中...'; saveTasks(); renderTaskList();
+      saveTasks();
       let pollCount=0;
       while(true){
         pollCount++;
         if(pollCount>120) throw new Error('生成超时');
-        currentTask.progress=Math.max(20,Math.min(90,20+pollCount/120*70));
+        currentTask.progress=Math.min(90,pollCount/120*90);
         renderTaskList();
         await new Promise(r=>setTimeout(r,3000));
         const pid=data.task_id||data.id||data.request_id;
@@ -1196,15 +1144,9 @@ async function generateImage(){
         try{ data=JSON.parse(pollText); }catch(e){ continue; }
         if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
           imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.metadata?.url||data.output?.[0];
-          if(imgUrl){
-            currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
-            await completeTaskWithMedia(currentTask,imgUrl); return;
-          }
+          if(imgUrl){ await completeTaskWithMedia(currentTask,imgUrl); return; }
         }
         if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
-        const apiProg=data.progress||data.percent;
-        if(apiProg&&typeof apiProg==='number'&&apiProg>0){ currentTask.progress=Math.max(currentTask.progress,Math.min(90,apiProg)); currentTask.statusText=data.status||'生成中...'; }
-        else { currentTask.statusText=data.status||'生成中...'; }
       }
     }
     throw new Error('未获取到图片结果');
@@ -1271,7 +1213,6 @@ async function generateVideo(){
   const mode=currentTask.params.mode||'text';
   setGenerating(true);
   try{
-    currentTask.progress=5; currentTask.statusText='提交中...'; renderTaskList();
     const body={ model:currentModel.modelId, prompt, seconds:String(currentTask.params.seconds), mode, size:currentTask.params.size, aspect_ratio:currentTask.params.aspect_ratio };
     if(mode==='reference'||mode==='keyframe'){
       const imgs=currentTask.params.images||[];
@@ -1283,7 +1224,6 @@ async function generateVideo(){
     if(neg) body.negative_prompt=neg;
     const seed=currentTask.params.seed;
     if(seed) body.seed=seed;
-    currentTask.progress=15; currentTask.statusText='请求生成中...'; renderTaskList();
     let resp=await fetch('/api/videos',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
     const respText=await resp.text();
     let data; try{ data=JSON.parse(respText); }catch(e){ throw new Error(respText||`HTTP ${resp.status}`); }
@@ -1291,20 +1231,15 @@ async function generateVideo(){
     const videoId=data.task_id||data.id||data.request_id||data.video_id;
     if(videoId){
       currentTask.backendTaskId=videoId;
-      currentTask.progress=20; currentTask.statusText='排队中...'; saveTasks(); renderTaskList();
+      saveTasks();
       const url=await pollVideoTask(videoId,key,(p,status)=>{
         currentTask.progress=Math.round(p);
-        currentTask.statusText=status||'生成中...';
         renderTaskList();
       });
-      currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
       await completeTaskWithMedia(currentTask,url);
     } else {
       const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
-      if(url){
-        currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
-        await completeTaskWithMedia(currentTask,url);
-      }
+      if(url){ await completeTaskWithMedia(currentTask,url); }
       else throw new Error('未获取到视频结果');
     }
   }catch(e){
@@ -1319,11 +1254,10 @@ async function generateVideo(){
   finally{ setGenerating(false); currentTask=null; }
 }
 
-/* ==================== Poll Video Task ==================== */
+/* ==================== Poll Video Task (unchanged logic) ==================== */
 async function pollVideoTask(videoId,apiKey,onProgress){
-  const maxRetries=200; // 200 * 3s = 10 minutes
+  const maxRetries=120;
   let lastProgress=0;
-  let notFoundCount=0;
   for(let i=0;i<maxRetries;i++){
     await new Promise(r=>setTimeout(r,3000));
     const resp=await fetch(`/api/tasks/${videoId}`,{headers:{'Authorization':'Bearer '+apiKey}});
@@ -1333,34 +1267,24 @@ async function pollVideoTask(videoId,apiKey,onProgress){
       continue;
     }
     if(!resp.ok){
-      if(resp.status===404){
-        notFoundCount++;
-        if(notFoundCount>10) throw new Error('任务不存在或已过期（连续10次404）');
-        if(onProgress){ onProgress(Math.max(lastProgress,5), '等待任务创建...'); }
-        continue;
-      }
+      if(resp.status===404) throw new Error('任务不存在或已过期');
       if(i>3) console.warn('Poll HTTP',resp.status);
       continue;
     }
-    // Check various status formats the API might return
-    const status=data.status||data.state||'';
-    const statusLower=String(status).toLowerCase();
-    if(statusLower==='completed'||statusLower==='succeeded'||statusLower==='success'||status==='SUCCESS'){
-      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url||data.data?.url||data.output?.url||data.result?.url;
+    if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
+      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
       if(url) return url;
-      throw new Error('视频已完成但未获取到URL: '+JSON.stringify(data).substring(0,300));
+      throw new Error('视频已完成但未获取到URL');
     }
-    if(statusLower==='failed'||status==='FAILED'){
-      throw new Error(data.error?.message||data.error||data.message||'生成失败');
-    }
-    const apiProgress=data.progress??data.percent??0;
-    if(apiProgress&&typeof apiProgress==='number'&&apiProgress>0){ lastProgress=Math.max(lastProgress,apiProgress); }
+    if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
+    const apiProgress=data.progress??0;
+    if(apiProgress>lastProgress) lastProgress=apiProgress;
     if(onProgress){
-      const displayProgress=Math.max(lastProgress,Math.min(90,20+(i/maxRetries)*70));
-      onProgress(displayProgress, status||'生成中...');
+      const displayProgress=Math.max(lastProgress,Math.min(90,(i/maxRetries)*100));
+      onProgress(displayProgress, data.status||data.state||'');
     }
   }
-  throw new Error('生成超时（已等待10分钟）');
+  throw new Error('生成超时（已等待6分钟）');
 }
 
 /* ==================== Task List Rendering ==================== */
@@ -1422,7 +1346,6 @@ function renderTaskCard(task){
   };
   const si=statusInfo[task.status]||statusInfo.completed;
   const isImg=task.type==='image';
-  const isGenerating=task.status==='generating';
   const thumb=task.src
     ?(isImg?`<img src="${esc(task.src)}" alt="" />`:`<video src="${esc(task.src)}" muted></video>`)
     :`<div class="task-thumb-placeholder">${isImg?'🖼':'🎬'}</div>`;
@@ -1438,19 +1361,12 @@ function renderTaskCard(task){
   const isSelected=filters.selected.has(task.id);
   const expanded=task._expanded;
 
-  // Progress bar in card header (visible even when collapsed)
-  const progressHtml=isGenerating?`
-    <div class="card-progress-wrap">
-      <div class="card-progress-bar"><div class="card-progress-fill" style="width:${task.progress||0}%"></div></div>
-      <span class="card-progress-text">${task.statusText||'生成中'} ${task.progress||0}%</span>
-    </div>`:'';
-
   let detailHtml='';
   if(expanded){
     const mediaHtml=task.src
       ?(isImg?`<img src="${esc(task.src)}" alt="result" />`:`<video src="${esc(task.src)}" controls autoplay loop></video>`)
-      :(isGenerating
-        ?`<div style="padding:20px;color:var(--muted);text-align:center"><div class="task-progress-bar"><div class="task-progress-fill" style="width:${task.progress||0}%"></div></div><p style="margin-top:8px">${esc(task.statusText||'生成中')} ${task.progress||0}%</p></div>`
+      :(task.status==='generating'
+        ?`<div style="padding:20px;color:var(--muted);text-align:center"><div class="task-progress-bar"><div class="task-progress-fill" style="width:${task.progress||0}%"></div></div><p style="margin-top:8px">生成中 ${task.progress||0}%</p></div>`
         :`<div style="padding:20px;color:var(--error);text-align:center">生成失败: ${esc(task.error||'未知错误')}</div>`);
     detailHtml=`
       <div class="task-detail">
@@ -1476,7 +1392,6 @@ function renderTaskCard(task){
       <span class="task-id">#${esc(task.id.substring(0,20))}</span>
       <span class="task-expand-icon">▼</span>
     </div>
-    ${progressHtml}
     <div class="task-card-body">
       <div class="task-thumb">${thumb}</div>
       <div class="task-info">
