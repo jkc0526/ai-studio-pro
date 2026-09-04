@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -227,6 +227,65 @@ a{color:var(--accent);text-decoration:none}
 .batch-panel{background:var(--accent-light);border:1px solid var(--accent);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:10px}
 .batch-panel.open{display:flex}
 .batch-panel .batch-info{font-size:13px;color:var(--accent)}
+
+/* ===== App Layout ===== */
+.app-layout{display:flex;min-height:100vh}
+
+/* ===== Sidebar ===== */
+.app-sidebar{width:200px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:50}
+.sidebar-logo{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700}
+.sidebar-logo .logo-mark{width:28px;height:28px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700}
+.sidebar-nav{flex:1;padding:8px 0}
+.sidebar-section{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:12px 18px 4px;font-weight:600}
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:10px 18px;cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;border-left:3px solid transparent}
+.sidebar-item:hover{background:var(--bg);color:var(--text)}
+.sidebar-item.active{background:var(--accent-light);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.sidebar-item .si-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.sidebar-footer{padding:12px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.sidebar-footer .version-badge{cursor:pointer}
+.sidebar-footer .version-badge:hover{color:var(--accent)}
+
+/* Main content area */
+.app-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.app-main .topbar{position:sticky;top:0;z-index:40}
+
+/* ===== Chat View ===== */
+.chat-view{flex:1;display:flex;flex-direction:column;height:calc(100vh - 56px)}
+.chat-messages{flex:1;overflow-y:auto;padding:20px 24px;max-width:900px;margin:0 auto;width:100%}
+.chat-msg{display:flex;gap:10px;margin-bottom:16px;animation:msgIn .3s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.chat-msg.user{flex-direction:row-reverse}
+.chat-msg-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.chat-msg.user .chat-msg-avatar{background:var(--info);color:#fff}
+.chat-msg.assistant .chat-msg-avatar{background:var(--accent);color:#fff}
+.chat-msg-body{max-width:70%;padding:10px 16px;border-radius:12px;font-size:14px;line-height:1.7;word-break:break-word}
+.chat-msg.user .chat-msg-body{background:var(--info);color:#fff;border-top-right-radius:4px}
+.chat-msg.assistant .chat-msg-body{background:var(--surface);border:1px solid var(--border);border-top-left-radius:4px}
+.chat-msg-body pre{background:rgba(0,0,0,.06);border-radius:6px;padding:10px;margin:8px 0;overflow-x:auto;font-size:12px}
+.chat-msg-body code{font-family:'Consolas','Monaco',monospace}
+.chat-msg-body p{margin:0}
+.chat-typing{display:inline-flex;gap:4px;padding:4px 0}
+.chat-typing span{width:8px;height:8px;border-radius:50%;background:var(--muted);animation:typing 1.4s infinite}
+.chat-typing span:nth-child(2){animation-delay:.2s}
+.chat-typing span:nth-child(3){animation-delay:.4s}
+@keyframes typing{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+.chat-suggestions{padding:8px 24px;display:flex;flex-wrap:wrap;gap:8px;max-width:900px;margin:0 auto;width:100%}
+.chat-suggestion{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:6px 14px;font-size:12px;color:var(--muted);cursor:pointer;transition:all .2s}
+.chat-suggestion:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+
+.chat-input-area{border-top:1px solid var(--border);background:var(--surface);padding:12px 24px}
+.chat-input-wrap{display:flex;gap:10px;align-items:flex-end;max-width:900px;margin:0 auto}
+.chat-input-wrap textarea{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;font-size:14px;resize:none;outline:none;transition:border-color .2s;max-height:120px;min-height:42px;line-height:1.5}
+.chat-input-wrap textarea:focus{border-color:var(--accent)}
+.chat-send-btn{width:42px;height:42px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.chat-send-btn:hover{background:#00a069}
+.chat-send-btn:disabled{opacity:.5;cursor:not-allowed}
+
+.chat-welcome{text-align:center;padding:40px 20px;color:var(--muted)}
+.chat-welcome .cw-icon{font-size:48px;margin-bottom:12px}
+.chat-welcome h3{font-size:18px;color:var(--text);margin-bottom:6px}
+.chat-welcome p{font-size:13px}
 </style>
 </head>
 <body>
@@ -243,21 +302,93 @@ a{color:var(--accent);text-decoration:none}
   </div>
 </div>
 
-<!-- Top Bar -->
-<div class="topbar">
-  <div class="logo">
+<!-- Changelog Modal -->
+<div class="modal-overlay" id="changelogModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <h3 id="changelogTitle">更新日志</h3>
+      <button class="modal-close" onclick="closeChangelog()">✕</button>
+    </div>
+    <div class="modal-body" id="changelogBody" style="max-height:400px;overflow-y:auto;font-size:13px;line-height:1.8"></div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeChangelog()">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- App Layout -->
+<div class="app-layout">
+<!-- Sidebar -->
+<aside class="app-sidebar">
+  <div class="sidebar-logo">
     <div class="logo-mark">AI</div>
     <span>AI Studio Pro</span>
-    <span class="version-badge" id="versionBadge" onclick="checkForUpdates()" title="点击检查更新">v?</span>
   </div>
-  <div class="topbar-right">
+  <nav class="sidebar-nav">
+    <div class="sidebar-item" data-view="chat" onclick="switchAppView('chat')">
+      <span class="si-icon">💬</span><span>对话助手</span>
+    </div>
+    <div class="sidebar-item active" data-view="tasks" onclick="switchAppView('tasks')">
+      <span class="si-icon">🎬</span><span>视频生成</span>
+    </div>
+    <div class="sidebar-item" data-view="images" onclick="switchAppView('images')">
+      <span class="si-icon">🖼️</span><span>图像生成</span>
+    </div>
+    <div class="sidebar-section">工具</div>
+    <div class="sidebar-item" onclick="openModelModal()">
+      <span class="si-icon">🔧</span><span>自定义模型</span>
+    </div>
+    <div class="sidebar-item" onclick="clearChatHistory()">
+      <span class="si-icon">🗑️</span><span>清空对话</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <span class="version-badge" id="versionBadge" onclick="versionBadgeClick(event)" title="点击检查更新，右键查看更新日志">v?</span>
+  </div>
+</aside>
+
+<!-- Main Area -->
+<div class="app-main">
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-right" style="margin-left:auto">
     <div class="apikey-bar">
       <input type="password" id="apiKey" placeholder="输入 API Key..." />
       <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
     </div>
-    <button class="btn" onclick="openModelModal()">自定义模型</button>
   </div>
 </div>
+
+<!-- ===== Chat View ===== -->
+<div id="chatView" class="chat-view">
+  <div class="chat-header" style="padding:10px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+    <span style="font-size:13px;color:var(--muted)">对话模型:</span>
+    <select id="chatModelSelect" onchange="switchChatModel(this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;cursor:pointer;max-width:260px"></select>
+  </div>
+  <div class="chat-messages" id="chatMessages">
+    <div class="chat-welcome" id="chatWelcome">
+      <div class="cw-icon">💬</div>
+      <h3>对话助手</h3>
+      <p>我可以帮你撰写提示词、推荐运镜风格、解答生成问题</p>
+    </div>
+  </div>
+  <div class="chat-suggestions" id="chatSuggestions">
+    <span class="chat-suggestion" onclick="sendQuickMsg('帮我写一个人物特写的图片提示词')">人物特写提示词</span>
+    <span class="chat-suggestion" onclick="sendQuickMsg('推荐几种视频运镜手法')">视频运镜推荐</span>
+    <span class="chat-suggestion" onclick="sendQuickMsg('如何写好分镜脚本？')">分镜脚本技巧</span>
+    <span class="chat-suggestion" onclick="sendQuickMsg('图片生成支持哪些尺寸和比例？')">尺寸比例说明</span>
+    <span class="chat-suggestion" onclick="sendQuickMsg('视频最长可以生成几秒？')">视频时长说明</span>
+  </div>
+  <div class="chat-input-area">
+    <div class="chat-input-wrap">
+      <textarea id="chatInput" rows="1" placeholder="输入消息，按 Enter 发送，Shift+Enter 换行..." onkeydown="chatKeydown(event)" oninput="autoResizeChat(this)"></textarea>
+      <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Task View (Video/Image Generation) ===== -->
+<div id="taskView" style="display:none">
 
 <!-- Project Tabs -->
 <div class="project-tabs" id="projectTabs"></div>
@@ -312,6 +443,10 @@ a{color:var(--accent);text-decoration:none}
 
 <!-- Pagination -->
 <div class="pagination" id="pagination" style="display:none"></div>
+
+</div><!-- /taskView -->
+</div><!-- /app-main -->
+</div><!-- /app-layout -->
 
 <!-- Mention Dropdown -->
 <div class="mention-dropdown" id="mentionDropdown"></div>
@@ -403,6 +538,15 @@ let uploadedImages = []; // [{dataUri, label, name}]
 let uploadedAudios = []; // [{dataUri, label, name}]
 let tasks = []; // each task: {id, type:'image'|'video', status:'completed'|'generating'|'failed', src, prompt, time, seed, model, specs:{}, projectId, error, progress, backendTaskId, params:{}}
 let customModels = [];
+/* YanBa API 聊天模型 */
+const YANBA_API_KEY = 'sk-ttrr6oHjFQJAwpV9OTk0ZVW0JVnfPaVKVicWVMuM9GT68wrt';
+const YANBA_BASE = 'https://clmm-mall.top';
+const YANBA_MODELS = [
+  {id:'yanba-gemini-3.1-pro-preview', name:'YanBa Gemini 3.1 Pro', modelId:'gemini-3.1-pro-preview', type:'chat', icon:'🔷', tag:'custom', apiBase:YANBA_BASE, apiKey:YANBA_API_KEY, desc:'Gemini 3.1 Pro'},
+  {id:'yanba-gpt-5.6-sol', name:'YanBa GPT-5.6 Sol', modelId:'gpt-5.6-sol', type:'chat', icon:'🟢', tag:'custom', apiBase:YANBA_BASE, apiKey:YANBA_API_KEY, desc:'GPT-5.6 Sol'},
+  {id:'yanba-gpt-5.4-mini', name:'YanBa GPT-5.4 Mini', modelId:'gpt-5.4-mini', type:'chat', icon:'🟡', tag:'custom', apiBase:YANBA_BASE, apiKey:YANBA_API_KEY, desc:'GPT-5.4 Mini'},
+  {id:'yanba-gemini-3.5-flash', name:'YanBa Gemini 3.5 Flash', modelId:'gemini-3.5-flash', type:'chat', icon:'⚡', tag:'custom', apiBase:YANBA_BASE, apiKey:YANBA_API_KEY, desc:'Gemini 3.5 Flash'},
+];
 let lastSeed = null;
 let lockedSeed = null;
 let isGenerating = false;
@@ -414,8 +558,31 @@ let editingTaskId = null; // when editing an existing task's params
 let projects = [{id:'default', name:'默认项目'}];
 let currentProjectId = 'default';
 let currentView = 'tasks'; // 'tasks' or 'drafts'
+let currentAppView = 'tasks'; // 'chat', 'tasks' (video), 'images'
 let drafts = []; // [{id, model, prompt, negPrompt, images, audios, params, time, projectId}]
 let filters = {status:'all', sort:'desc', perPage:10, page:1, selected:new Set()};
+
+/* ==================== App Version & Changelog ==================== */
+const APP_VERSION = '2.2.0';
+const CHANGELOG = [
+  {
+    version: '2.2.0',
+    date: '2026-09-04',
+    items: [
+      '新增：对话助手功能，支持YanBa API的4个聊天模型（GPT-5.6/GPT-5.4/Gemini 3.1 Pro/Gemini 3.5 Flash）',
+      '新增：侧边栏导航，可切换对话助手/视频生成/图像生成',
+      '新增：图像生成和视频生成页面独立显示，不再混在一起',
+      '新增：对话界面模型切换器，可随时切换聊天模型',
+      '新增：创建任务时按页面类型过滤模型列表',
+      '新增：任务卡片显示进度条和进度百分比',
+      '修复：视频后台生成成功但前端不显示的问题（任务状态代理路径修复）',
+      '修复：视频/图片URL提取覆盖更多返回字段格式',
+      '修复：页面默认打开视频生成页面（恢复之前习惯）',
+      '优化：轮询超时延长至9分钟，网络错误自动重试'
+    ]
+  }
+];
+let lastShownVersion = localStorage.getItem('last_shown_version')||'';
 
 /* ==================== Preset Models ==================== */
 const PRESET_MODELS = [
@@ -637,6 +804,35 @@ function deleteProject(id){
   showToast('项目已删除','success');
 }
 
+
+function switchAppView(view){
+  currentAppView = view;
+  const chatView = document.getElementById('chatView');
+  const taskView = document.getElementById('taskView');
+  document.querySelectorAll('.sidebar-item').forEach(function(el){ el.classList.remove('active'); });
+  var sidebarItem = document.querySelector('.sidebar-item[data-view="' + view + '"]');
+  if(sidebarItem) sidebarItem.classList.add('active');
+  if(view === 'chat'){
+    chatView.style.display = '';
+    if(taskView) taskView.style.display = 'none';
+  } else {
+    if(chatView) chatView.style.display = 'none';
+    if(taskView){
+      taskView.style.display = '';
+      if(view === 'images'){
+        var imgModel = getAllModels().find(function(m){ return m.type === 'image'; });
+        if(imgModel) currentModel = imgModel;
+      } else {
+        var vidModel = getAllModels().find(function(m){ return m.type === 'video'; });
+        if(vidModel) currentModel = vidModel;
+      }
+      loadTasks();
+      renderProjectTabs();
+      filters.page = 1;
+      renderTaskList();
+    }
+  }
+}
 /* ==================== View Switching ==================== */
 function switchView(view){
   currentView=view;
@@ -689,16 +885,20 @@ function closeCreateModal(){
 
 function renderCreateModalFields(){
   const body=document.getElementById('createModalBody');
+  /* 根据当前页面确定要显示的模型类型 */
+  const filterType = (currentAppView==='images') ? 'image' : 'video';
+  /* 确保当前模型类型匹配 */
+  if(!currentModel || currentModel.type!==filterType){
+    currentModel = getAllModels().find(m=>m.type===filterType) || currentModel;
+  }
   if(!currentModel){ body.innerHTML='<p style="color:var(--muted);text-align:center;padding:40px">请选择模型</p>'; return; }
   const m=currentModel;
-  // Model dropdown
-  const allModels=getAllModels();
-  const modelOpts=allModels.map(mm=>{
-    const group=customModels.some(cm=>cm.id===mm.id)?'自定义模型':'预设模型';
-    return `<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'free')})</option>`;
-  }).join('');
-  const optGroups=`<optgroup label="预设模型">${allModels.filter(mm=>!customModels.some(cm=>cm.id===mm.id)).map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'free')})</option>`).join('')}</optgroup>` +
-    (customModels.length?`<optgroup label="自定义模型">${customModels.map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'custom')})</option>`).join('')}</optgroup>`:'');
+  // Model dropdown - 只显示当前类型的模型，排除chat类型
+  const allModels=getAllModels().filter(mm=>mm.type===filterType);
+  const presetModels = allModels.filter(mm=>!customModels.some(cm=>cm.id===mm.id));
+  const customTypeModels = customModels.filter(mm=>mm.type===filterType);
+  const optGroups=`<optgroup label="预设模型">${presetModels.map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'free')})</option>`).join('')}</optgroup>` +
+    (customTypeModels.length?`<optgroup label="自定义模型">${customTypeModels.map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'custom')})</option>`).join('')}</optgroup>`:'');
 
   let html=`
     <div class="field">
@@ -1122,7 +1322,7 @@ async function generateImage(){
     let data; try{ data=JSON.parse(respText); }catch(e){ throw new Error(respText||`HTTP ${resp.status}`); }
     if(!resp.ok){ const errMsg=data?.error?.message||data?.detail||data?.message||respText||`HTTP ${resp.status}`; throw new Error(errMsg); }
     // Extract URL from response
-    let imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.output?.[0]||data.images?.[0];
+    let imgUrl=extractMediaUrl(data,'image');
     if(imgUrl){
       await completeTaskWithMedia(currentTask,imgUrl);
       return;
@@ -1142,11 +1342,12 @@ async function generateImage(){
         const pollResp=await fetch(`/api/tasks/${pid}`,{headers:{'Authorization':'Bearer '+key}});
         const pollText=await pollResp.text();
         try{ data=JSON.parse(pollText); }catch(e){ continue; }
-        if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
-          imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.metadata?.url||data.output?.[0];
+        if(isTaskCompleted(data)){
+          imgUrl=extractMediaUrl(data,'image');
           if(imgUrl){ await completeTaskWithMedia(currentTask,imgUrl); return; }
+          if(pollCount<115) continue;
         }
-        if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
+        if(isTaskFailed(data)) throw new Error(data.error?.message||data.error||'生成失败');
       }
     }
     throw new Error('未获取到图片结果');
@@ -1232,13 +1433,15 @@ async function generateVideo(){
     if(videoId){
       currentTask.backendTaskId=videoId;
       saveTasks();
+      renderTaskList();
       const url=await pollVideoTask(videoId,key,(p,status)=>{
         currentTask.progress=Math.round(p);
+        currentTask.statusText=status;
         renderTaskList();
       });
       await completeTaskWithMedia(currentTask,url);
     } else {
-      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
+      const url=extractMediaUrl(data,'video');
       if(url){ await completeTaskWithMedia(currentTask,url); }
       else throw new Error('未获取到视频结果');
     }
@@ -1254,37 +1457,79 @@ async function generateVideo(){
   finally{ setGenerating(false); currentTask=null; }
 }
 
-/* ==================== Poll Video Task (unchanged logic) ==================== */
+/* Helper: extract media URL from API response */
+function extractMediaUrl(data, type){
+  if(!data) return null;
+  const candidates = [
+    data.metadata?.url, data.metadata?.video_url,
+    data.video_url, data.url, data.image_url,
+    data.data?.video_url, data.data?.url, data.data?.image_url,
+    data.data?.[0]?.url, data.data?.[0]?.video_url, data.data?.[0]?.image_url,
+    data.output?.[0], data.output?.url, data.output?.video_url,
+    data.images?.[0]?.url, data.videos?.[0]?.url,
+    data.result?.url, data.result?.video_url, data.result?.video,
+    data.content, data.file_url
+  ];
+  for(const c of candidates){
+    if(c && typeof c==='string' && c.startsWith('http')) return c;
+  }
+  return null;
+}
+
+function isTaskCompleted(data){
+  if(!data) return false;
+  const s = (data.status||data.state||'').toLowerCase();
+  return s==='completed'||s==='succeeded'||s==='success'||s==='done'||s==='finished';
+}
+
+function isTaskFailed(data){
+  if(!data) return false;
+  const s = (data.status||data.state||'').toLowerCase();
+  return s==='failed'||s==='error'||s==='failure'||s==='cancelled';
+}
+
+/* ==================== Poll Video Task ==================== */
 async function pollVideoTask(videoId,apiKey,onProgress){
-  const maxRetries=120;
+  const maxRetries=180; /* 最多等9分钟 */
   let lastProgress=0;
   for(let i=0;i<maxRetries;i++){
     await new Promise(r=>setTimeout(r,3000));
-    const resp=await fetch(`/api/tasks/${videoId}`,{headers:{'Authorization':'Bearer '+apiKey}});
+    let resp;
+    try{
+      resp=await fetch(`/api/tasks/${videoId}`,{headers:{'Authorization':'Bearer '+apiKey}});
+    }catch(e){
+      if(i>5) console.warn('Poll network error',e.message);
+      continue;
+    }
     const text=await resp.text();
     let data; try{ data=JSON.parse(text); }catch(e){
       if(i>5) console.warn('Poll parse error, attempt',i,text.substring(0,200));
       continue;
     }
     if(!resp.ok){
-      if(resp.status===404) throw new Error('任务不存在或已过期');
-      if(i>3) console.warn('Poll HTTP',resp.status);
+      if(resp.status===404){ if(i>3) continue; else continue; }
+      if(i>3) console.warn('Poll HTTP',resp.status,text.substring(0,200));
       continue;
     }
-    if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
-      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
+    if(isTaskCompleted(data)){
+      const url=extractMediaUrl(data,'video');
       if(url) return url;
-      throw new Error('视频已完成但未获取到URL');
+      /* URL might be in a nested structure, log full response for debugging */
+      console.warn('Task completed but no URL found in response:', JSON.stringify(data).substring(0,500));
+      /* Keep polling a few more times in case URL appears later */
+      if(i<maxRetries-5) continue;
+      throw new Error('视频已完成但未获取到URL，请查看后台');
     }
-    if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
-    const apiProgress=data.progress??0;
-    if(apiProgress>lastProgress) lastProgress=apiProgress;
+    if(isTaskFailed(data)) throw new Error(data.error?.message||data.error||data.message||'生成失败');
+    /* Extract progress from various possible fields */
+    const apiProgress=data.progress??data.percent??data.progress_percent??data.completion??0;
+    if(typeof apiProgress==='number' && apiProgress>lastProgress) lastProgress=apiProgress;
     if(onProgress){
       const displayProgress=Math.max(lastProgress,Math.min(90,(i/maxRetries)*100));
       onProgress(displayProgress, data.status||data.state||'');
     }
   }
-  throw new Error('生成超时（已等待6分钟）');
+  throw new Error('生成超时（已等待9分钟）');
 }
 
 /* ==================== Task List Rendering ==================== */
@@ -1297,6 +1542,13 @@ function renderTaskList(){
     items=drafts.filter(d=>d.projectId===currentProjectId);
   } else {
     items=tasks.filter(t=>t.projectId===currentProjectId);
+  }
+
+  // Filter by type (video/image) based on current app view
+  if(currentAppView==='images'){
+    items=items.filter(t=>t.type==='image');
+  } else if(currentAppView==='tasks'){
+    items=items.filter(t=>t.type==='video');
   }
 
   // Apply status filter (only for tasks view)
@@ -1320,7 +1572,9 @@ function renderTaskList(){
 
   // Update task count badge
   const badge=document.getElementById('taskCountBadge');
-  const projectTasks=tasks.filter(t=>t.projectId===currentProjectId);
+  let projectTasks=tasks.filter(t=>t.projectId===currentProjectId);
+  if(currentAppView==='images') projectTasks=projectTasks.filter(t=>t.type==='image');
+  else if(currentAppView==='tasks') projectTasks=projectTasks.filter(t=>t.type==='video');
   badge.textContent=`任务列表(${projectTasks.length})`;
 
   // Update stats
@@ -1387,11 +1641,12 @@ function renderTaskCard(task){
   <div class="task-card${expanded?' expanded':''}" id="card-${task.id}">
     <div class="task-card-header" onclick="toggleTaskExpand('${task.id}')">
       <input type="checkbox" class="task-checkbox" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleTaskSelect('${task.id}',this.checked)" />
-      <span class="task-status ${si.cls}">${si.text}</span>
+      <span class="task-status ${si.cls}">${si.text}${task.status==='generating'&&task.progress?' '+task.progress+'%':''}</span>
       <span class="task-time">${esc(formatTime(task.time))}</span>
       <span class="task-id">#${esc(task.id.substring(0,20))}</span>
       <span class="task-expand-icon">▼</span>
     </div>
+    ${task.status==='generating'&&task.progress?`<div style="height:3px;background:var(--border);margin:0 12px"><div style="height:100%;width:${task.progress}%;background:var(--accent);transition:width .3s"></div></div>`:''}
     <div class="task-card-body">
       <div class="task-thumb">${thumb}</div>
       <div class="task-info">
@@ -1753,6 +2008,10 @@ function saveTasks(){
 /* ==================== Custom Models ==================== */
 function loadCustomModels(){
   try{ customModels=JSON.parse(localStorage.getItem('custom_models')||'[]'); }catch(e){ customModels=[]; }
+  /* 合并 YanBa API 内置聊天模型 */
+  YANBA_MODELS.forEach(m=>{
+    if(!customModels.some(cm=>cm.id===m.id)) customModels.push(m);
+  });
 }
 function saveCustomModels(){
   localStorage.setItem('custom_models',JSON.stringify(customModels));
@@ -1874,38 +2133,71 @@ function isElectron(){
 }
 
 async function initUpdater(){
+  const badge=document.getElementById('versionBadge');
   if(!isElectron()){
-    const badge=document.getElementById('versionBadge');
-    if(badge){ badge.textContent='Web版'; badge.style.cursor='default'; }
-    return;
+    if(badge){ badge.textContent='v'+APP_VERSION; }
+  }else{
+    try{
+      const ver=await window.electronAPI.getAppVersion();
+      if(badge) badge.textContent='v'+ver;
+    }catch(e){
+      if(badge) badge.textContent='v'+APP_VERSION;
+    }
+    try{
+      window.electronAPI.onUpdateAvailable((info)=>{
+        showUpdateBanner(info.version, info.releaseNotes);
+      });
+      window.electronAPI.onDownloadProgress((progress)=>{
+        const right=document.getElementById('updateBannerRight');
+        if(right){
+          right.innerHTML='<div style="text-align:center"><div>下载中 '+progress.percent+'%</div><div class="update-progress-bar"><div class="update-progress-fill" style="width:'+progress.percent+'%"></div></div></div>';
+        }
+      });
+      window.electronAPI.onUpdateDownloaded((info)=>{
+        const right=document.getElementById('updateBannerRight');
+        const text=document.getElementById('updateBannerText');
+        if(text) text.textContent='更新已下载完成，立即安装？';
+        if(right){
+          right.innerHTML='<button class="btn" onclick="installUpdate()">立即安装并重启</button><button class="btn" onclick="closeUpdateBanner()">稍后</button>';
+        }
+      });
+      window.electronAPI.onUpdateError((error)=>{
+        showToast('更新出错: '+error.message,'error');
+        closeUpdateBanner();
+      });
+    }catch(e){ console.warn('Updater events init failed:',e); }
   }
-  try{
-    const ver=await window.electronAPI.getAppVersion();
-    const badge=document.getElementById('versionBadge');
-    if(badge) badge.textContent='v'+ver;
+  /* 如果版本更新了，自动显示更新日志 */
+  if(lastShownVersion !== APP_VERSION){
+    showChangelog();
+    localStorage.setItem('last_shown_version', APP_VERSION);
+  }
+}
 
-    window.electronAPI.onUpdateAvailable((info)=>{
-      showUpdateBanner(info.version, info.releaseNotes);
-    });
-    window.electronAPI.onDownloadProgress((progress)=>{
-      const right=document.getElementById('updateBannerRight');
-      if(right){
-        right.innerHTML='<div style="text-align:center"><div>下载中 '+progress.percent+'%</div><div class="update-progress-bar"><div class="update-progress-fill" style="width:'+progress.percent+'%"></div></div></div>';
-      }
-    });
-    window.electronAPI.onUpdateDownloaded((info)=>{
-      const right=document.getElementById('updateBannerRight');
-      const text=document.getElementById('updateBannerText');
-      if(text) text.textContent='更新已下载完成，立即安装？';
-      if(right){
-        right.innerHTML='<button class="btn" onclick="installUpdate()">立即安装并重启</button><button class="btn" onclick="closeUpdateBanner()">稍后</button>';
-      }
-    });
-    window.electronAPI.onUpdateError((error)=>{
-      showToast('更新出错: '+error.message,'error');
-      closeUpdateBanner();
-    });
-  }catch(e){ console.warn('Updater init failed:',e); }
+function versionBadgeClick(e){
+  checkForUpdates();
+}
+
+function showChangelog(){
+  const body=document.getElementById('changelogBody');
+  const title=document.getElementById('changelogTitle');
+  if(!body) return;
+  title.textContent='更新日志 v'+APP_VERSION;
+  let html='';
+  CHANGELOG.forEach(entry=>{
+    html += `<div style="margin-bottom:16px">
+      <div style="font-weight:600;color:var(--accent);font-size:14px;margin-bottom:6px">v${esc(entry.version)} <span style="color:var(--muted);font-weight:normal;font-size:12px;margin-left:8px">${esc(entry.date)}</span></div>
+      <ul style="margin:0;padding-left:18px;color:var(--text)">
+        ${entry.items.map(item=>`<li style="margin-bottom:4px">${esc(item)}</li>`).join('')}
+      </ul>
+    </div>`;
+  });
+  body.innerHTML=html;
+  document.getElementById('changelogModal').classList.add('open');
+}
+
+function closeChangelog(){
+  document.getElementById('changelogModal').classList.remove('open');
 }
 
 function showUpdateBanner(version, notes){
@@ -1974,12 +2266,181 @@ window.addEventListener('load',async ()=>{
   loadCustomModels();
   loadProjects();
   loadDrafts();
-  currentModel=getAllModels()[0];
+  /* 默认选中第一个视频/图片模型，而不是聊天模型 */
+  currentModel = getAllModels().find(m=>m.type==='video') || getAllModels().find(m=>m.type==='image') || getAllModels()[0];
   loadTasks();
   renderProjectTabs();
   renderTaskList();
+  renderChatModelSelect();
   initUpdater();
+  /* 默认显示视频生成页面 */
+  switchAppView('tasks');
 });
+
+/* ==================== Chat Functionality ==================== */
+let chatMessages = []; // [{role:'user'|'assistant', content:string}]
+let chatGenerating = false;
+let chatModel = null;
+
+function getChatModel(){
+  if(chatModel) return chatModel;
+  chatModel = getAllModels().find(m=>m.type==='chat') || YANBA_MODELS[0];
+  return chatModel;
+}
+
+function renderChatMessages(){
+  const container = document.getElementById('chatMessages');
+  const welcome = document.getElementById('chatWelcome');
+  const suggestions = document.getElementById('chatSuggestions');
+  if(!chatMessages.length){
+    if(welcome) welcome.style.display = '';
+    if(suggestions) suggestions.style.display = '';
+    container.querySelectorAll('.chat-msg').forEach(el=>el.remove());
+    return;
+  }
+  if(welcome) welcome.style.display = 'none';
+  if(suggestions) suggestions.style.display = 'none';
+  container.querySelectorAll('.chat-msg').forEach(el=>el.remove());
+  chatMessages.forEach(msg=>{
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + msg.role;
+    div.innerHTML = `<div class="chat-msg-avatar">${msg.role==='user'?'我':'AI'}</div><div class="chat-msg-body">${formatMarkdown(esc(msg.content))}</div>`;
+    container.appendChild(div);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+function formatMarkdown(text){
+  return text
+    .replace(/```([\s\S]*?)```/g,'<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+
+function appendChatChunk(text){
+  if(chatMessages.length && chatMessages[chatMessages.length-1].role==='assistant'){
+    chatMessages[chatMessages.length-1].content += text;
+  } else {
+    chatMessages.push({role:'assistant', content:text});
+  }
+  renderChatMessages();
+}
+
+async function sendChatMessage(){
+  if(chatGenerating) return;
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+  const text = input.value.trim();
+  if(!text) return;
+  chatMessages.push({role:'user', content:text});
+  input.value = '';
+  autoResizeChat(input);
+  renderChatMessages();
+  chatGenerating = true;
+  sendBtn.disabled = true;
+  // Show typing indicator
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'chat-msg assistant';
+  typingDiv.id = 'chatTyping';
+  typingDiv.innerHTML = '<div class="chat-msg-avatar">AI</div><div class="chat-msg-body"><div class="chat-typing"><span></span><span></span><span></span></div></div>';
+  document.getElementById('chatMessages').appendChild(typingDiv);
+  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+  try{
+    const model = getChatModel();
+    const apiKey = model.apiKey || getApiKey();
+    const base = model.apiBase || '';
+    const messages = chatMessages.map(m=>({role:m.role==='assistant'?'assistant':'user', content:m.content}));
+    const resp = await fetch('/api/chat/completions',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer ' + apiKey,
+        'x-api-base': base
+      },
+      body:JSON.stringify({
+        model: model.modelId,
+        messages: messages,
+        stream: true
+      })
+    });
+    typingDiv.remove();
+    if(!resp.ok){
+      const errText = await resp.text();
+      appendChatChunk('请求失败: ' + errText);
+      return;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while(true){
+      const {done, value} = await reader.read();
+      if(done) break;
+      buffer += decoder.decode(value, {stream:true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for(const line of lines){
+        const trimmed = line.trim();
+        if(!trimmed || !trimmed.startsWith('data:')) continue;
+        const data = trimmed.slice(5).trim();
+        if(data === '[DONE]') continue;
+        try{
+          const json = JSON.parse(data);
+          const delta = json.choices && json.choices[0] && json.choices[0].delta;
+          if(delta && delta.content){
+            appendChatChunk(delta.content);
+          }
+        }catch(e){}
+      }
+    }
+  }catch(err){
+    const typing = document.getElementById('chatTyping');
+    if(typing) typing.remove();
+    appendChatChunk('网络错误: ' + err.message);
+  }finally{
+    chatGenerating = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function sendQuickMsg(text){
+  document.getElementById('chatInput').value = text;
+  sendChatMessage();
+}
+
+function chatKeydown(e){
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function autoResizeChat(el){
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function clearChatHistory(){
+  if(chatMessages.length && !confirm('确定要清空对话记录吗？')) return;
+  chatMessages = [];
+  renderChatMessages();
+  showToast('对话已清空','success');
+}
+
+function renderChatModelSelect(){
+  const sel = document.getElementById('chatModelSelect');
+  if(!sel) return;
+  const chatModels = getAllModels().filter(m=>m.type==='chat');
+  sel.innerHTML = chatModels.map(m=>`<option value="${m.id}">${esc(m.icon)} ${esc(m.name)}</option>`).join('');
+  const cur = getChatModel();
+  if(cur) sel.value = cur.id;
+}
+
+function switchChatModel(id){
+  chatModel = getAllModels().find(m=>m.id===id) || YANBA_MODELS[0];
+  showToast('已切换到: ' + chatModel.name, 'success');
+}
 
 // Close modals on overlay click
 document.addEventListener('click',e=>{

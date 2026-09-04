@@ -95,23 +95,63 @@ app.get('/api/agnesapi', async (req, res) => {
   }
 });
 
-// === Task status query proxy (GET /v1/videos/{taskId}; used by image & video polling) ===
+// === Task status query proxy (tries /v1/videos/ and /v1/tasks/) ===
 async function proxyTaskStatus(req, res) {
   const base = getBaseUrl(req);
   const taskId = req.params.videoId || req.params.taskId;
-  try {
-    const resp = await fetch(base + "/v1/videos/" + taskId, {
-      headers: { 'Authorization': req.headers.authorization || '' }
-    });
-    const text = await resp.text();
-    res.status(resp.status).setHeader('Content-Type', 'application/json').send(text);
-  } catch (err) {
-    console.error('Task status query error:', err.message);
-    res.status(502).json({ error: { message: "Proxy error: " + err.message } });
+  const paths = ["/v1/videos/" + taskId, "/v1/tasks/" + taskId];
+  let lastErr = null;
+  for (const path of paths) {
+    try {
+      const resp = await fetch(base + path, {
+        headers: { 'Authorization': req.headers.authorization || '' }
+      });
+      const text = await resp.text();
+      // If we get a non-404 response, return it
+      if (resp.status !== 404) {
+        res.status(resp.status).setHeader('Content-Type', 'application/json').send(text);
+        return;
+      }
+      // 404 - try next path
+    } catch (err) {
+      lastErr = err;
+      console.error('Task status proxy error for ' + path + ':', err.message);
+    }
+  }
+  if (lastErr) {
+    res.status(502).json({ error: { message: "Proxy error: " + lastErr.message } });
+  } else {
+    res.status(404).json({ error: { message: "Task not found" } });
   }
 }
 app.get('/api/videos/:videoId', proxyTaskStatus);
 app.get('/api/tasks/:taskId', proxyTaskStatus);
+
+// === Chat completions proxy (streaming) ===
+app.post('/api/chat/completions', async (req, res) => {
+  const base = getBaseUrl(req);
+  try {
+    const resp = await fetch(`${base}/v1/chat/completions`, {
+      method: 'POST',
+      headers: buildHeaders(req),
+      body: JSON.stringify(req.body)
+    });
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  } catch (err) {
+    console.error('Chat proxy error:', err.message);
+    res.status(502).json({ error: { message: `Proxy error: ${err.message}` } });
+  }
+});
 
 // === Generic proxy (for custom API endpoints) ===
 app.post('/api/proxy', async (req, res) => {
