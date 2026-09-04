@@ -1605,38 +1605,74 @@ async function generateVideo(){
 /* Helper: extract media URL from API response */
 function extractMediaUrl(data, type){
   if(!data) return null;
-  const candidates = [
-    data.metadata?.url, data.metadata?.video_url,
-    data.video_url, data.url, data.image_url,
-    data.data?.video_url, data.data?.url, data.data?.image_url,
-    data.data?.[0]?.url, data.data?.[0]?.video_url, data.data?.[0]?.image_url,
-    data.output?.[0], data.output?.url, data.output?.video_url,
-    data.images?.[0]?.url, data.videos?.[0]?.url,
-    data.result?.url, data.result?.video_url, data.result?.video,
-    data.content, data.file_url
-  ];
-  for(const c of candidates){
-    if(c && typeof c==='string' && c.startsWith('http')) return c;
+  /* Deep search all string fields that look like URLs */
+  function findUrls(obj, depth){
+    if(depth>5||!obj) return [];
+    let results=[];
+    if(typeof obj==='string'){
+      if(obj.startsWith('http') && (obj.includes('.mp4')||obj.includes('.mov')||obj.includes('.webm')||obj.includes('.png')||obj.includes('.jpg')||obj.includes('.jpeg')||obj.includes('.webp')||obj.includes('/videos/')||obj.includes('/images/')||obj.includes('cdn.')||obj.includes('oss.')||obj.includes('s3.')||obj.includes('blob.'))){
+        return [obj];
+      }
+      return [];
+    }
+    if(Array.isArray(obj)){
+      for(const item of obj) results=results.concat(findUrls(item,depth+1));
+      return results;
+    }
+    if(typeof obj==='object'){
+      /* Check known URL field names first */
+      const urlFields=['url','video_url','image_url','file_url','download_url','content_url','media_url','src','source','video','image','output_url','result_url','signed_url'];
+      for(const key of urlFields){
+        if(obj[key]&&typeof obj[key]==='string') results=results.concat(findUrls(obj[key],depth+1));
+      }
+      /* Also check nested objects */
+      for(const key of ['metadata','data','result','output','response','outputs','videos','images','files']){
+        if(obj[key]) results=results.concat(findUrls(obj[key],depth+1));
+      }
+      return results;
+    }
+    return [];
   }
-  return null;
+  const urls=findUrls(data,0);
+  /* Filter by type preference */
+  if(type==='video'){
+    const videoUrl=urls.find(u=>u.includes('.mp4')||u.includes('.mov')||u.includes('.webm')||u.includes('/videos/'));
+    if(videoUrl) return videoUrl;
+  }
+  if(type==='image'){
+    const imgUrl=urls.find(u=>u.includes('.png')||u.includes('.jpg')||u.includes('.jpeg')||u.includes('.webp')||u.includes('/images/'));
+    if(imgUrl) return imgUrl;
+  }
+  return urls[0]||null;
 }
 
 function isTaskCompleted(data){
   if(!data) return false;
-  const s = (data.status||data.state||'').toLowerCase();
-  return s==='completed'||s==='succeeded'||s==='success'||s==='done'||s==='finished';
+  const s = (data.status||data.state||data.phase||data.stage||'').toLowerCase();
+  const completedStates=['completed','succeeded','success','done','finished','ready','processed','complete','successed','publish','published'];
+  if(completedStates.includes(s)) return true;
+  /* Check for explicit completion flags */
+  if(data.completed===true||data.done===true||data.finished===true||data.ready===true) return true;
+  /* If there's a URL in the response AND progress is 100% or no pending state */
+  const url=extractMediaUrl(data);
+  if(url){
+    const pendingStates=['pending','queued','processing','generating','running','in_progress','in-queue','waiting'];
+    if(!pendingStates.includes(s)) return true;
+  }
+  return false;
 }
 
 function isTaskFailed(data){
   if(!data) return false;
-  const s = (data.status||data.state||'').toLowerCase();
-  return s==='failed'||s==='error'||s==='failure'||s==='cancelled';
+  const s = (data.status||data.state||data.phase||'').toLowerCase();
+  return s==='failed'||s==='error'||s==='failure'||s==='cancelled'||s==='canceled'||s==='timeout'||s==='expired';
 }
 
 /* ==================== Poll Video Task ==================== */
 async function pollVideoTask(videoId,apiKey,onProgress){
-  const maxRetries=180; /* 最多等9分钟 */
+  const maxRetries=240; /* 最多等12分钟 */
   let lastProgress=0;
+  let completedWithoutUrl=0;
   for(let i=0;i<maxRetries;i++){
     await new Promise(r=>setTimeout(r,3000));
     let resp;
@@ -1652,29 +1688,53 @@ async function pollVideoTask(videoId,apiKey,onProgress){
       continue;
     }
     if(!resp.ok){
-      if(resp.status===404){ if(i>3) continue; else continue; }
-      if(i>3) console.warn('Poll HTTP',resp.status,text.substring(0,200));
-      continue;
+      if(resp.status===404){ /* Try /api/videos/ endpoint as fallback */
+        try{
+          const resp2=await fetch(`/api/videos/${videoId}`,{headers:{'Authorization':'Bearer '+apiKey}});
+          if(resp2.ok){
+            const text2=await resp2.text();
+            try{ data=JSON.parse(text2); resp=resp2; }catch(e){ continue; }
+          }else continue;
+        }catch(e){ continue; }
+      }else{
+        if(i>3) console.warn('Poll HTTP',resp.status,text.substring(0,200));
+        continue;
+      }
+    }
+    /* Log first response for debugging */
+    if(i===0) console.log('Poll init response:', JSON.stringify(data).substring(0,300));
+    /* Check for URL even before status says completed */
+    const earlyUrl=extractMediaUrl(data,'video');
+    if(earlyUrl && (data.progress>=99||data.progress_percent>=99||i>20)){
+      console.log('Found video URL early:', earlyUrl.substring(0,100));
+      return earlyUrl;
     }
     if(isTaskCompleted(data)){
       const url=extractMediaUrl(data,'video');
-      if(url) return url;
+      if(url){
+        console.log('Task completed, URL found:', url.substring(0,100));
+        return url;
+      }
       /* URL might be in a nested structure, log full response for debugging */
-      console.warn('Task completed but no URL found in response:', JSON.stringify(data).substring(0,500));
-      /* Keep polling a few more times in case URL appears later */
-      if(i<maxRetries-5) continue;
+      completedWithoutUrl++;
+      console.warn('Task completed but no URL found (attempt '+completedWithoutUrl+'), response keys:', Object.keys(data).join(','));
+      console.warn('Full response:', JSON.stringify(data).substring(0,800));
+      if(completedWithoutUrl<10) continue; /* Wait a bit more for URL to appear */
       throw new Error('视频已完成但未获取到URL，请查看后台');
     }
-    if(isTaskFailed(data)) throw new Error(data.error?.message||data.error||data.message||'生成失败');
+    if(isTaskFailed(data)){
+      console.warn('Task failed, response:', JSON.stringify(data).substring(0,300));
+      throw new Error(data.error?.message||data.error||data.message||data.detail||'生成失败');
+    }
     /* Extract progress from various possible fields */
-    const apiProgress=data.progress??data.percent??data.progress_percent??data.completion??0;
+    const apiProgress=data.progress??data.percent??data.progress_percent??data.completion??data.progress_ratio*100??0;
     if(typeof apiProgress==='number' && apiProgress>lastProgress) lastProgress=apiProgress;
     if(onProgress){
       const displayProgress=Math.max(lastProgress,Math.min(90,(i/maxRetries)*100));
-      onProgress(displayProgress, data.status||data.state||'');
+      onProgress(displayProgress, data.status||data.state||data.phase||'');
     }
   }
-  throw new Error('生成超时（已等待9分钟）');
+  throw new Error('生成超时（已等待12分钟）');
 }
 
 /* ==================== Task List Rendering ==================== */

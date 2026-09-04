@@ -99,24 +99,45 @@ app.get('/api/agnesapi', async (req, res) => {
 async function proxyTaskStatus(req, res) {
   const base = getBaseUrl(req);
   const taskId = req.params.videoId || req.params.taskId;
-  const paths = ["/v1/videos/" + taskId, "/v1/tasks/" + taskId];
+  const paths = ["/v1/tasks/" + taskId, "/v1/videos/" + taskId];
   let lastErr = null;
+  let lastStatus = 0;
+  let lastText = '';
   for (const path of paths) {
     try {
       const resp = await fetch(base + path, {
         headers: { 'Authorization': req.headers.authorization || '' }
       });
       const text = await resp.text();
-      // If we get a non-404 response, return it
-      if (resp.status !== 404) {
-        res.status(resp.status).setHeader('Content-Type', 'application/json').send(text);
-        return;
+      // 404 means this path doesn't exist, try next
+      if (resp.status === 404) {
+        console.log('Task proxy: ' + path + ' returned 404, trying next path');
+        continue;
       }
-      // 404 - try next path
+      // If we get a 2xx response with valid JSON that has data, return it
+      if (resp.ok) {
+        let parsed;
+        try { parsed = JSON.parse(text); } catch(e) { parsed = null; }
+        if (parsed) {
+          console.log('Task proxy: ' + path + ' returned ' + resp.status + ', status=' + (parsed.status||parsed.state||'unknown'));
+          res.status(resp.status).setHeader('Content-Type', 'application/json').send(text);
+          return;
+        }
+      }
+      // For non-404 errors, save it but try next path
+      lastStatus = resp.status;
+      lastText = text;
+      lastErr = new Error('HTTP ' + resp.status);
+      console.log('Task proxy: ' + path + ' returned ' + resp.status + ', trying next path');
     } catch (err) {
       lastErr = err;
       console.error('Task status proxy error for ' + path + ':', err.message);
     }
+  }
+  // If one path returned a non-404 error, return that instead of 404
+  if (lastStatus && lastStatus !== 404) {
+    res.status(lastStatus).setHeader('Content-Type', 'application/json').send(lastText);
+    return;
   }
   if (lastErr) {
     res.status(502).json({ error: { message: "Proxy error: " + lastErr.message } });
