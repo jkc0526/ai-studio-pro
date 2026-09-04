@@ -1,6 +1,6 @@
 {
   "name": "ai-studio-pro",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "AI Studio Pro — 自定义模型图片/视频生成桌面工具",
   "main": "electron-main.js",
   "author": "AI Studio",

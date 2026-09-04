@@ -5,3 +5,4 @@ media/
 *.log
 .DS_Store
 Thumbs.db
+.git_backup/

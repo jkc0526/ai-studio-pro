@@ -3,160 +3,219 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Studio Pro — AI 图片/视频生成</title>
+<title>AI Studio Pro — 任务管理看板</title>
 <style>
 :root{
-  --bg:#0a0a0f; --surface:#13131e; --surface2:#1a1a2e; --border:#252538;
-  --text:#e0e0e8; --muted:#8888a0; --accent:#6366f1; --accent2:#8b5cf6;
-  --success:#10b981; --error:#ef4444; --warn:#f59e0b;
-  --radius:12px; --radius-sm:8px;
+  --bg:#f5f6f8; --surface:#ffffff; --border:#e8e8e8; --border-dark:#d0d0d0;
+  --text:#333; --muted:#999; --accent:#00b578; --accent-light:#e6f7f0;
+  --success:#00b578; --error:#ff4d4f; --warn:#faad14; --info:#1890ff;
+  --radius:8px; --shadow:0 2px 8px rgba(0,0,0,.06); --shadow-lg:0 4px 16px rgba(0,0,0,.1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,system-ui,sans-serif;font-size:14px;line-height:1.6;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,system-ui,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;overflow-x:hidden}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#3a3a55}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#aaa}
 textarea,input,select,button{font-family:inherit}
 textarea{resize:vertical}
+a{color:var(--accent);text-decoration:none}
 
-/* Top Bar */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
-.logo{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700}
-.logo-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff}
+/* ===== Top Bar ===== */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border);height:56px;position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;color:var(--text)}
+.logo-mark{width:30px;height:30px;border-radius:6px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:700}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .apikey-bar{display:flex;align-items:center;gap:8px}
-.apikey-bar input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;color:var(--text);font-size:13px;width:240px;outline:none;transition:border-color .2s}
+.apikey-bar input{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:6px 12px;color:var(--text);font-size:13px;width:220px;outline:none;transition:border-color .2s}
 .apikey-bar input:focus{border-color:var(--accent)}
-.btn{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 14px;color:var(--text);cursor:pointer;font-size:13px;transition:all .2s;white-space:nowrap}
-.btn:hover{border-color:var(--accent);color:#fff}
-.btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff}
-.btn-accent:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,.3)}
-.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+.version-badge{font-size:11px;color:var(--muted);padding:2px 8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .2s}
+.version-badge:hover{color:var(--accent);border-color:var(--accent)}
 
-/* Model Selector */
-.model-selector{display:flex;gap:12px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
-.model-card{min-width:200px;flex:1;max-width:280px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:all .25s;display:flex;align-items:center;gap:10px;position:relative}
-.model-card:hover{border-color:#3a3a55;transform:translateY(-1px)}
-.model-card.active{border-color:var(--accent);background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.08))}
-.model-icon{width:36px;height:36px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.model-info{flex:1;min-width:0}
-.model-info h3{font-size:13px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.model-info p{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.model-tag{font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;flex-shrink:0;text-transform:uppercase}
-.tag-free{background:rgba(16,185,129,.15);color:var(--success)}
-.tag-paid{background:rgba(245,158,11,.15);color:var(--warn)}
-.tag-custom{background:rgba(139,92,246,.15);color:var(--accent2)}
-.model-card .btn-edit{position:absolute;top:6px;right:6px;width:22px;height:22px;background:rgba(0,0,0,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;opacity:0;transition:opacity .2s;color:#fff;border:none}
-.model-card:hover .btn-edit{opacity:1}
-.model-card .btn-edit:hover{background:rgba(0,0,0,.7)}
-.model-add-card{min-width:200px;flex:0 0 180px;background:transparent;border:2px dashed var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted)}
-.model-add-card:hover{border-color:var(--accent);color:var(--accent)}
+/* ===== Buttons ===== */
+.btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:6px 14px;color:var(--text);cursor:pointer;font-size:13px;transition:all .2s;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-accent{background:var(--accent);border:1px solid var(--accent);color:#fff}
+.btn-accent:hover{background:#00a069;border-color:#00a069;color:#fff}
+.btn-primary{background:var(--accent);border:1px solid var(--accent);color:#fff}
+.btn-primary:hover{background:#00a069;border-color:#00a069;color:#fff}
+.btn-outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+.btn-outline:hover{background:var(--accent-light)}
+.btn-danger{border-color:var(--error);color:var(--error)}
+.btn-danger:hover{background:#fff1f0;border-color:var(--error);color:var(--error)}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:6px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
 
-/* Main Layout */
-.main{display:flex;min-height:calc(100vh - 130px)}
-.panel-left{width:460px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:20px}
-.panel-right{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;padding:20px}
+/* ===== Project Tabs ===== */
+.project-tabs{display:flex;align-items:center;gap:8px;padding:10px 24px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+.project-tab{display:flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;color:var(--muted);background:var(--surface);transition:all .2s;white-space:nowrap}
+.project-tab:hover{color:var(--text);border-color:var(--border-dark)}
+.project-tab.active{color:var(--accent);border:2px solid var(--accent);padding:5px 13px;background:var(--accent-light);font-weight:600}
+.project-tab .pt-name{cursor:pointer}
+.project-tab .pt-actions{display:none;gap:4px;margin-left:4px}
+.project-tab:hover .pt-actions{display:flex}
+.project-tab .pt-actions button{background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted);padding:0 2px}
+.project-tab .pt-actions button:hover{color:var(--accent)}
+.project-add{padding:6px 14px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;color:var(--muted);background:transparent;transition:all .2s;white-space:nowrap}
+.project-add:hover{border-color:var(--accent);color:var(--accent)}
 
-/* Control Sections */
-.section{margin-bottom:22px}
-.section-label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.textarea,input[type=text],input[type=password],input[type=number],select{
-  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;color:var(--text);font-size:13px;width:100%;outline:none;transition:border-color .2s}
-.textarea{min-height:90px}
-.textarea:focus,input:focus,select:focus{border-color:var(--accent)}
-.row{display:flex;gap:10px;align-items:center}
-.row>*{flex:1}
-.negative-wrap{margin-top:8px}
-.negative-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted);user-select:none}
-.negative-toggle:hover{color:var(--text)}
-.negative-body{margin-top:8px;display:none}
-.negative-body.open{display:block}
+/* ===== Action Bar ===== */
+.action-bar{display:flex;align-items:center;gap:8px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.action-bar .btn-create{font-weight:600}
+.action-bar .spacer{flex:1}
+.action-bar .view-tab{padding:6px 16px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;color:var(--muted);background:var(--surface);transition:all .2s}
+.action-bar .view-tab:hover{color:var(--text)}
+.action-bar .view-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ===== Filter Bar ===== */
+.filter-bar{display:flex;align-items:center;gap:8px;padding:10px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.filter-bar .filter-select{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:5px 10px;font-size:13px;color:var(--text);cursor:pointer;outline:none}
+.filter-bar .filter-select:hover{border-color:var(--accent)}
+.filter-bar .filter-select:focus{border-color:var(--accent)}
+.filter-bar .filter-label{font-size:12px;color:var(--muted)}
+.filter-bar .select-all-wrap{display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;color:var(--text)}
+.filter-bar .select-all-wrap input{cursor:pointer}
+.filter-bar .spacer{flex:1}
+.filter-bar .stats-info{font-size:12px;color:var(--muted)}
+
+/* ===== Task List ===== */
+.task-list-container{padding:16px 24px;max-width:1200px;margin:0 auto}
+.task-empty{text-align:center;color:var(--muted);padding:60px 20px;font-size:14px}
+.task-empty .empty-icon{font-size:48px;margin-bottom:12px;opacity:.3}
+
+/* ===== Task Card ===== */
+.task-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;box-shadow:var(--shadow);overflow:hidden;transition:border-color .2s}
+.task-card:hover{border-color:var(--border-dark)}
+.task-card.expanded{border-color:var(--accent)}
+.task-card-header{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+.task-card-header:hover{background:#fafafa}
+.task-checkbox{width:16px;height:16px;cursor:pointer;flex-shrink:0}
+.task-status{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.status-completed{background:var(--accent-light);color:var(--success);border:1px solid var(--success)}
+.status-generating{background:#fff7e6;color:var(--warn);border:1px solid var(--warn)}
+.status-failed{background:#fff1f0;color:var(--error);border:1px solid var(--error)}
+.task-time{font-size:12px;color:var(--muted);white-space:nowrap}
+.task-id{font-size:12px;color:var(--muted);font-family:monospace;white-space:nowrap}
+.task-expand-icon{margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s}
+.task-card.expanded .task-expand-icon{transform:rotate(180deg)}
+.task-card-body{display:flex;gap:16px;padding:0 16px 12px 16px}
+.task-thumb{width:100px;height:100px;border-radius:6px;overflow:hidden;background:var(--bg);flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--border)}
+.task-thumb img,.task-thumb video{width:100%;height:100%;object-fit:cover;display:block}
+.task-thumb-placeholder{font-size:32px;opacity:.3}
+.task-info{flex:1;min-width:0}
+.task-prompt{font-size:13px;color:var(--text);margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.task-specs{display:flex;flex-wrap:wrap;gap:6px}
+.spec-item{font-size:11px;color:var(--muted);background:var(--bg);padding:2px 8px;border-radius:4px;border:1px solid var(--border)}
+.task-actions{display:flex;gap:6px;padding:0 16px 12px 16px}
+.task-detail{display:none;padding:0 16px 16px 16px;border-top:1px solid var(--border);margin-top:4px}
+.task-card.expanded .task-detail{display:block}
+.task-detail-media{margin:12px 0;text-align:center}
+.task-detail-media img,.task-detail-media video{max-width:100%;max-height:400px;border-radius:var(--radius);border:1px solid var(--border)}
+.task-detail-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-top:12px}
+.task-detail-meta .meta-row{display:flex;gap:8px}
+.task-detail-meta .meta-label{color:var(--muted);min-width:60px;flex-shrink:0}
+.task-detail-meta .meta-val{color:var(--text);word-break:break-all}
+.task-progress-bar{height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-top:8px}
+.task-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+
+/* ===== Card Progress (visible when collapsed) ===== */
+.card-progress-wrap{padding:0 16px 8px;display:flex;align-items:center;gap:10px}
+.card-progress-bar{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.card-progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#00d69a);border-radius:3px;transition:width .5s ease;animation:progress-shimmer 1.5s infinite}
+.card-progress-text{font-size:12px;color:var(--accent);white-space:nowrap;min-width:80px;text-align:right}
+@keyframes progress-shimmer{0%{opacity:1}50%{opacity:.7}100%{opacity:1}}
+
+/* ===== Create Task Modal ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;width:680px;max-width:92vw;max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-header h2{font-size:17px;font-weight:700}
+.modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;padding:4px}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:20px 24px}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--surface)}
+
+/* Form Elements */
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
+.field input[type=text],.field input[type=password],.field input[type=number],.field textarea,.field select{
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-size:13px;width:100%;outline:none;transition:border-color .2s}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
+.field textarea{min-height:90px}
+.field-row{display:flex;gap:12px}
+.field-row>*{flex:1}
+
+/* Mode Tabs */
 .mode-tabs{display:flex;gap:6px;margin-bottom:10px}
-.mode-tab{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;text-align:center;cursor:pointer;font-size:12px;color:var(--muted);transition:all .2s}
+.mode-tab{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;text-align:center;cursor:pointer;font-size:12px;color:var(--muted);transition:all .2s}
 .mode-tab:hover{color:var(--text)}
 .mode-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
-.seed-row{display:flex;gap:8px;align-items:center}
-.seed-row input{flex:1}
-.btn-lock{flex:0 0 auto;width:38px;height:38px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:14px;color:var(--muted);transition:all .2s}
-.btn-lock.locked{color:var(--warn);border-color:var(--warn)}
+
+/* Negative Prompt */
+.negative-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted);user-select:none;margin-bottom:6px}
+.negative-toggle:hover{color:var(--text)}
+.negative-body{display:none}
+.negative-body.open{display:block}
 
 /* Upload Area */
 .upload-area{border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;transition:all .2s;color:var(--muted)}
-.upload-area:hover,.upload-area.dragover{border-color:var(--accent);background:rgba(99,102,241,.05);color:var(--text)}
+.upload-area:hover,.upload-area.dragover{border-color:var(--accent);background:var(--accent-light);color:var(--accent)}
 .upload-icon{font-size:28px;margin-bottom:6px}
 .upload-hint{font-size:12px}
 .upload-area input[type=file]{display:none}
 .upload-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-.upload-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;position:relative}
+.upload-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;position:relative}
 .upload-card img,.upload-card audio{width:100%;border-radius:6px;display:block;max-height:100px;object-fit:cover}
-.upload-card .card-name{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:11px;width:100%;margin-top:6px;outline:none}
+.upload-card .card-name{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:11px;width:100%;margin-top:6px;outline:none}
 .upload-card .card-name:focus{border-color:var(--accent)}
 .upload-card .card-mention{font-size:10px;color:var(--accent);margin-top:4px;text-align:center}
-.upload-card .btn-remove{position:absolute;top:4px;right:4px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
+.upload-card .btn-remove{position:absolute;top:4px;right:4px;width:20px;height:20px;background:rgba(0,0,0,.5);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center}
 .upload-card .btn-remove:hover{background:var(--error)}
 
 /* Reference Mapping */
-.ref-table{margin-top:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;font-size:12px;display:none}
+.ref-table{margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px;font-size:12px;display:none}
 .ref-table.open{display:block}
 .ref-table h4{font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
 .ref-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--border)}
 .ref-row:last-child{border:none}
-.ref-row .ref-src{color:var(--accent)}
+.ref-row .ref-src{color:var(--info)}
 .ref-row .ref-dst{color:var(--success)}
 
 /* @ Mention Dropdown */
-.mention-dropdown{position:absolute;background:var(--surface2);border:1px solid var(--accent);border-radius:var(--radius-sm);box-shadow:0 8px 24px rgba(0,0,0,.4);max-height:200px;overflow-y:auto;z-index:50;display:none;min-width:200px}
+.mention-dropdown{position:absolute;background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:200px;overflow-y:auto;z-index:300;display:none;min-width:200px}
 .mention-dropdown.open{display:block}
 .mention-item{padding:8px 12px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:8px}
-.mention-item:hover,.mention-item.active{background:rgba(99,102,241,.15)}
+.mention-item:hover,.mention-item.active{background:var(--accent-light)}
 .mention-item .mi-icon{font-size:14px}
 .prompt-wrap{position:relative}
 
-/* Generate */
-.gen-btn{width:100%;padding:14px;font-size:15px;font-weight:600;margin-top:6px}
-.progress-wrap{margin-top:12px;display:none}
-.progress-wrap.open{display:block}
-.progress-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}
-.progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;transition:width .3s}
-.progress-text{font-size:11px;color:var(--muted);margin-top:6px;text-align:center}
+/* Seed Row */
+.seed-row{display:flex;gap:8px;align-items:center}
+.seed-row input{flex:1}
+.btn-lock{flex:0 0 auto;width:36px;height:36px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:14px;color:var(--muted);transition:all .2s}
+.btn-lock.locked{color:var(--warn);border-color:var(--warn)}
 
-/* Result Area */
-.result-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px}
-.result-placeholder{text-align:center;color:var(--muted)}
-.result-placeholder .ph-icon{font-size:64px;margin-bottom:12px;opacity:.3}
-.result-placeholder p{font-size:14px}
-.result-content{max-width:100%;text-align:center}
-.result-content img,.result-content video{max-width:100%;max-height:70vh;border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,.5)}
-.result-meta{margin-top:16px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;width:100%;max-width:600px}
-.result-meta .meta-row{display:flex;gap:8px;font-size:12px;margin-bottom:4px}
-.result-meta .meta-label{color:var(--muted);min-width:60px}
-.result-meta .meta-val{color:var(--text);word-break:break-all}
-.result-actions{margin-top:12px;display:flex;gap:10px;justify-content:center}
+/* Checkbox Group */
+.checkbox-group{display:flex;flex-wrap:wrap;gap:10px}
+.checkbox-item{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
+.checkbox-item input{width:auto}
 
-/* History */
-.history-section{margin-top:20px;border-top:1px solid var(--border);padding-top:16px}
-.history-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.history-header h3{font-size:14px;font-weight:600}
-.history-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-.history-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;cursor:pointer;transition:all .2s;position:relative}
-.history-item:hover{border-color:var(--accent);transform:translateY(-2px)}
-.history-item img,.history-item video{width:100%;height:100px;object-fit:cover;display:block}
-.history-item .h-type{position:absolute;top:4px;left:4px;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase}
-.history-item .h-type-img{background:rgba(99,102,241,.8);color:#fff}
-.history-item .h-type-vid{background:rgba(139,92,246,.8);color:#fff}
-.history-empty{text-align:center;color:var(--muted);padding:30px;font-size:13px}
+/* Modal List */
+.modal-list{margin-bottom:14px}
+.modal-list h4{font-size:12px;color:var(--muted);margin-bottom:8px}
+.modal-list-item{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;margin-bottom:6px;font-size:12px}
 
-/* Toast */
+/* ===== Toast ===== */
 .toast-container{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:center}
-.toast{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:toastIn .3s ease}
+.toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 18px;font-size:13px;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow-lg);animation:toastIn .3s ease}
 .toast-success{border-color:var(--success);color:var(--success)}
 .toast-error{border-color:var(--error);color:var(--error)}
 .toast-warn{border-color:var(--warn);color:var(--warn)}
 @keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 
-/* Update Banner */
-.update-banner{position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:10px 24px;display:none;align-items:center;justify-content:space-between;z-index:150;font-size:13px;box-shadow:0 2px 12px rgba(99,102,241,.3)}
+/* ===== Update Banner ===== */
+.update-banner{position:fixed;top:0;left:0;right:0;background:var(--accent);color:#fff;padding:10px 24px;display:none;align-items:center;justify-content:space-between;z-index:150;font-size:13px;box-shadow:0 2px 12px rgba(0,181,120,.3)}
 .update-banner.open{display:flex;animation:slideDown .3s ease}
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 .update-banner .ub-left{display:flex;align-items:center;gap:10px}
@@ -165,45 +224,19 @@ textarea{resize:vertical}
 .update-banner .btn:hover{background:rgba(255,255,255,.3)}
 .update-progress-bar{width:200px;height:6px;background:rgba(255,255,255,.2);border-radius:3px;overflow:hidden;margin-top:4px}
 .update-progress-fill{height:100%;background:#fff;transition:width .3s;border-radius:3px}
-.version-badge{font-size:11px;color:var(--muted);padding:3px 8px;background:var(--surface2);border-radius:10px;cursor:pointer;transition:all .2s}
-.version-badge:hover{color:var(--accent);border-color:var(--accent)}
 
-/* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.modal-overlay.open{display:flex}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:560px;max-width:90vw;max-height:85vh;overflow-y:auto;padding:24px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-.modal-header h2{font-size:18px;font-weight:700}
-.modal-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
-.modal-close:hover{color:var(--text)}
-.modal-field{margin-bottom:14px}
-.modal-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
-.modal-field input,.modal-field select{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;color:var(--text);font-size:13px;width:100%;outline:none}
-.modal-field input:focus,.modal-field select:focus{border-color:var(--accent)}
-.modal-row{display:flex;gap:12px}
-.modal-row>*{flex:1}
-.checkbox-group{display:flex;flex-wrap:wrap;gap:10px}
-.checkbox-item{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
-.checkbox-item input{width:auto}
-.modal-list{margin-bottom:14px}
-.modal-list h4{font-size:12px;color:var(--muted);margin-bottom:8px}
-.modal-list-item{display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:6px;font-size:12px}
-.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;border-top:1px solid var(--border);padding-top:16px}
+/* ===== Pagination ===== */
+.pagination{display:flex;justify-content:center;align-items:center;gap:8px;padding:20px 0}
+.pagination .btn{min-width:32px;text-align:center}
+.pagination .page-info{font-size:13px;color:var(--muted)}
+
+/* ===== Batch Panel ===== */
+.batch-panel{background:var(--accent-light);border:1px solid var(--accent);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:10px}
+.batch-panel.open{display:flex}
+.batch-panel .batch-info{font-size:13px;color:var(--accent)}
 </style>
 </head>
 <body>
-
-<!-- Top Bar -->
-<div class="topbar">
-  <div class="logo"><div class="logo-mark">AI</div><span>AI Studio Pro</span><span class="version-badge" id="versionBadge" onclick="checkForUpdates()" title="点击检查更新">v?</span></div>
-  <div class="topbar-right">
-    <div class="apikey-bar">
-      <input type="password" id="apiKey" placeholder="输入 API Key..." />
-      <button class="btn btn-accent" onclick="saveApiKey()">保存</button>
-    </div>
-    <button class="btn" onclick="openModelModal()">自定义模型</button>
-  </div>
-</div>
 
 <!-- Update Banner -->
 <div class="update-banner" id="updateBanner">
@@ -217,38 +250,97 @@ textarea{resize:vertical}
   </div>
 </div>
 
-<!-- Model Selector -->
-<div class="model-selector" id="modelSelector"></div>
-
-<!-- Main -->
-<div class="main">
-  <!-- Left Panel -->
-  <div class="panel-left" id="controlPanel"></div>
-  <!-- Right Panel -->
-  <div class="panel-right">
-    <div class="result-area" id="resultArea">
-      <div class="result-placeholder">
-        <div class="ph-icon">🎨</div>
-        <p>选择模型并输入 Prompt 开始生成</p>
-      </div>
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">AI</div>
+    <span>AI Studio Pro</span>
+    <span class="version-badge" id="versionBadge" onclick="checkForUpdates()" title="点击检查更新">v?</span>
+  </div>
+  <div class="topbar-right">
+    <div class="apikey-bar">
+      <input type="password" id="apiKey" placeholder="输入 API Key..." />
+      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
     </div>
-    <div class="history-section">
-      <div class="history-header">
-        <h3>历史记录</h3>
-        <button class="btn" onclick="clearHistory()">清空</button>
-      </div>
-      <div class="history-grid" id="historyGrid">
-        <div class="history-empty">暂无历史记录</div>
-      </div>
-    </div>
+    <button class="btn" onclick="openModelModal()">自定义模型</button>
   </div>
 </div>
+
+<!-- Project Tabs -->
+<div class="project-tabs" id="projectTabs"></div>
+
+<!-- Action Bar -->
+<div class="action-bar">
+  <button class="btn btn-accent btn-create" onclick="openCreateModal()">+ 创建任务</button>
+  <button class="view-tab" id="viewTabDrafts" onclick="switchView('drafts')">暂存列表</button>
+  <button class="view-tab active" id="viewTabTasks" onclick="switchView('tasks')">任务列表</button>
+  <div class="spacer"></div>
+  <span id="taskCountBadge" style="font-size:12px;color:var(--muted)"></span>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar" id="filterBar">
+  <label class="select-all-wrap"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" /> 本页全选</label>
+  <select class="filter-select" id="sortSelect" onchange="applyFilters()">
+    <option value="desc">时间倒序</option>
+    <option value="asc">时间正序</option>
+  </select>
+  <select class="filter-select" id="statusFilter" onchange="applyFilters()">
+    <option value="all">全部状态</option>
+    <option value="completed">已完成</option>
+    <option value="generating">生成中</option>
+    <option value="failed">失败</option>
+  </select>
+  <select class="filter-select" id="perPageSelect" onchange="onPerPageChange()">
+    <option value="10">10条/页</option>
+    <option value="20">20条/页</option>
+    <option value="50">50条/页</option>
+  </select>
+  <button class="btn btn-sm" onclick="refreshTasks()">刷新</button>
+  <button class="btn btn-sm btn-danger" onclick="cleanupFailedTasks()">清理</button>
+  <div class="spacer"></div>
+  <span class="stats-info" id="statsInfo"></span>
+</div>
+
+<!-- Batch Panel -->
+<div class="batch-panel" id="batchPanel">
+  <span class="batch-info" id="batchInfo">已选择 0 个任务</span>
+  <button class="btn btn-sm btn-danger" onclick="batchDeleteTasks()">批量删除</button>
+  <button class="btn btn-sm" onclick="clearSelection()">取消选择</button>
+</div>
+
+<!-- Task List -->
+<div class="task-list-container" id="taskListContainer">
+  <div class="task-empty">
+    <div class="empty-icon">📋</div>
+    <p>暂无任务，点击"创建任务"开始</p>
+  </div>
+</div>
+
+<!-- Pagination -->
+<div class="pagination" id="pagination" style="display:none"></div>
 
 <!-- Mention Dropdown -->
 <div class="mention-dropdown" id="mentionDropdown"></div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
+
+<!-- Create Task Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="createModalTitle">创建任务</h2>
+      <button class="modal-close" onclick="closeCreateModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="createModalBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="saveDraft()">保存到暂存</button>
+      <button class="btn" onclick="closeCreateModal()">取消</button>
+      <button class="btn btn-primary" id="submitTaskBtn" onclick="submitTask()">提交任务</button>
+    </div>
+  </div>
+</div>
 
 <!-- Custom Model Modal -->
 <div class="modal-overlay" id="modelModal">
@@ -257,52 +349,56 @@ textarea{resize:vertical}
       <h2 id="modalTitle">自定义模型</h2>
       <button class="modal-close" onclick="closeModelModal()">&times;</button>
     </div>
-    <input type="hidden" id="cmId" />
-    <div class="modal-row">
-      <div class="modal-field"><label>名称</label><input type="text" id="cmName" placeholder="My Custom Model" /></div>
-      <div class="modal-field"><label>图标 (emoji)</label><input type="text" id="cmIcon" placeholder="🤖" maxlength="4" /></div>
-    </div>
-    <div class="modal-row">
-      <div class="modal-field"><label>模型 ID</label><input type="text" id="cmModelId" placeholder="agnes-custom-1.0" /></div>
-      <div class="modal-field"><label>类型</label><select id="cmType"><option value="image">图片</option><option value="video">视频</option></select></div>
-    </div>
-    <div class="modal-row">
-      <div class="modal-field"><label>标签</label><select id="cmTag"><option value="free">Free</option><option value="paid">Paid</option></select></div>
-      <div class="modal-field"><label>API Base (可选)</label><input type="text" id="cmApiBase" placeholder="/api" /></div>
-    </div>
-    <div class="modal-field" id="cmImageFields">
-      <label>尺寸</label><input type="text" id="cmSizes" placeholder="1K,2K,4K" value="1K,2K,4K" />
-      <label style="margin-top:8px">比例</label><input type="text" id="cmRatios" placeholder="1:1,16:9,9:16" value="1:1,16:9,9:16,4:3,3:4" />
-    </div>
-    <div id="cmVideoFields" style="display:none">
-      <div class="modal-field"><label>模式</label>
+    <div class="modal-body">
+      <input type="hidden" id="cmId" />
+      <div class="field-row">
+        <div class="field"><label>名称</label><input type="text" id="cmName" placeholder="My Custom Model" /></div>
+        <div class="field"><label>图标 (emoji)</label><input type="text" id="cmIcon" placeholder="🤖" maxlength="4" /></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>模型 ID</label><input type="text" id="cmModelId" placeholder="agnes-custom-1.0" /></div>
+        <div class="field"><label>类型</label><select id="cmType" onchange="toggleCmFields()"><option value="image">图片</option><option value="video">视频</option></select></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>标签</label><select id="cmTag"><option value="free">Free</option><option value="paid">Paid</option></select></div>
+        <div class="field"><label>API Base (可选)</label><input type="text" id="cmApiBase" placeholder="/api" /></div>
+      </div>
+      <div id="cmImageFields">
+        <div class="field"><label>尺寸</label><input type="text" id="cmSizes" placeholder="1K,2K,4K" value="1K,2K,4K" /></div>
+        <div class="field"><label>比例</label><input type="text" id="cmRatios" placeholder="1:1,16:9,9:16" value="1:1,16:9,9:16,4:3,3:4" /></div>
+      </div>
+      <div id="cmVideoFields" style="display:none">
+        <div class="field"><label>模式</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item"><input type="checkbox" value="text" class="cmMode" checked /> Text</label>
+            <label class="checkbox-item"><input type="checkbox" value="reference" class="cmMode" checked /> Reference</label>
+            <label class="checkbox-item"><input type="checkbox" value="keyframe" class="cmMode" checked /> Keyframe</label>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>最大图片数</label><input type="number" id="cmMaxImages" value="5" /></div>
+          <div class="field"><label>时长 (秒)</label><input type="text" id="cmDurations" placeholder="4,5,6,7,8" value="4,5,6,7,8,9,10,11,12" /></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>尺寸</label><input type="text" id="cmVSizes" placeholder="720P,960P,2K" value="720P,960P,2K" /></div>
+          <div class="field"><label>比例</label><input type="text" id="cmVRatios" placeholder="16:9,9:16" value="16:9,9:16,4:3,1:1" /></div>
+        </div>
         <div class="checkbox-group">
-          <label class="checkbox-item"><input type="checkbox" value="text" class="cmMode" checked /> Text</label>
-          <label class="checkbox-item"><input type="checkbox" value="reference" class="cmMode" checked /> Reference</label>
-          <label class="checkbox-item"><input type="checkbox" value="keyframe" class="cmMode" checked /> Keyframe</label>
+          <label class="checkbox-item"><input type="checkbox" id="cmAudio" checked /> 支持音频参考</label>
+          <label class="checkbox-item"><input type="checkbox" id="cmVideoRef" /> 支持视频参考</label>
         </div>
       </div>
-      <div class="modal-row">
-        <div class="modal-field"><label>最大图片数</label><input type="number" id="cmMaxImages" value="5" /></div>
-        <div class="modal-field"><label>时长 (秒)</label><input type="text" id="cmDurations" placeholder="4,5,6,7,8" value="4,5,6,7,8,9,10,11,12" /></div>
-      </div>
-      <div class="modal-row">
-        <div class="modal-field"><label>尺寸</label><input type="text" id="cmVSizes" placeholder="720P,960P,2K" value="720P,960P,2K" /></div>
-        <div class="modal-field"><label>比例</label><input type="text" id="cmVRatios" placeholder="16:9,9:16" value="16:9,9:16,4:3,1:1" /></div>
-      </div>
-      <div class="checkbox-group">
-        <label class="checkbox-item"><input type="checkbox" id="cmAudio" checked /> 支持音频参考</label>
-        <label class="checkbox-item"><input type="checkbox" id="cmVideoRef" /> 支持视频参考</label>
-      </div>
     </div>
-    <div class="modal-actions">
+    <div class="modal-footer">
       <button class="btn" onclick="closeModelModal()">取消</button>
-      <button class="btn btn-accent" onclick="saveCustomModel()">保存模型</button>
+      <button class="btn btn-primary" onclick="saveCustomModel()">保存模型</button>
     </div>
-    <hr style="border:none;border-top:1px solid var(--border);margin:20px 0" />
-    <div class="modal-list">
-      <h4>已有自定义模型</h4>
-      <div id="customModelList"></div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:0" />
+    <div class="modal-body">
+      <div class="modal-list">
+        <h4>已有自定义模型</h4>
+        <div id="customModelList"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -312,11 +408,21 @@ textarea{resize:vertical}
 let currentModel = null;
 let uploadedImages = []; // [{dataUri, label, name}]
 let uploadedAudios = []; // [{dataUri, label, name}]
-let history = [];
+let tasks = []; // each task: {id, type:'image'|'video', status:'completed'|'generating'|'failed', src, prompt, time, seed, model, specs:{}, projectId, error, progress, backendTaskId, params:{}}
 let customModels = [];
 let lastSeed = null;
 let lockedSeed = null;
 let isGenerating = false;
+let abortController = null;
+let batchMode = false;
+let batchResults = [];
+let currentTask = null; // currently generating task
+let editingTaskId = null; // when editing an existing task's params
+let projects = [{id:'default', name:'默认项目'}];
+let currentProjectId = 'default';
+let currentView = 'tasks'; // 'tasks' or 'drafts'
+let drafts = []; // [{id, model, prompt, negPrompt, images, audios, params, time, projectId}]
+let filters = {status:'all', sort:'desc', perPage:10, page:1, selected:new Set()};
 
 /* ==================== Preset Models ==================== */
 const PRESET_MODELS = [
@@ -326,20 +432,58 @@ const PRESET_MODELS = [
 ];
 
 /* ==================== Templates ==================== */
-const TEMPLATES = [
-  {name:'中近景50mm', text:'中近景镜头，50mm焦段，自然景深，人物面部细节清晰，背景柔和虚化，电影质感'},
-  {name:'特写85mm', text:'特写镜头，85mm焦段，浅景深，极致细节，主体突出，背景完全虚化，人像摄影风格'},
-  {name:'全景24mm', text:'全景广角镜头，24mm焦段，广阔视野，环境交代完整，宏大场景，层次丰富'},
-  {name:'推镜头', text:'推镜头，镜头由远及近缓慢推进，逐渐靠近主体，营造聚焦感和紧张感，平滑运动'},
-  {name:'拉镜头', text:'拉镜头，镜头由近及远缓慢后拉，逐渐展示全景，揭示环境，营造开阔感'},
-  {name:'横移', text:'横移镜头，镜头水平移动，侧面平移展示场景，稳定平滑的运动轨迹'},
-  {name:'固定机位', text:'固定机位拍摄，镜头稳定不动，画面构图严谨，适合叙事和对话场景'},
-  {name:'手持', text:'手持摄影风格，画面带有自然晃动感，真实纪录片质感，临场感强'},
-  {name:'过肩', text:'过肩镜头，从人物肩后方拍摄，前景人物虚化，主体清晰，对话场景常用构图'},
-  {name:'荷兰角', text:'荷兰角倾斜构图，画面水平线倾斜，营造不安、紧张或眩晕的视觉心理效果'},
-  {name:'俯拍', text:'俯拍镜头，从高处向下拍摄，上帝视角，展示全貌和空间关系，宏大叙事感'},
-  {name:'仰拍', text:'仰拍镜头，从低处向上拍摄，主体高大威严，强调力量感和压迫感'}
-];
+const TEMPLATES = {
+  camera: [
+    {name:'中近景50mm', text:'中近景镜头，50mm焦段，自然景深，人物面部细节清晰，背景柔和虚化，电影质感'},
+    {name:'特写85mm', text:'特写镜头，85mm焦段，浅景深，极致细节，主体突出，背景完全虚化，人像摄影风格'},
+    {name:'全景24mm', text:'全景广角镜头，24mm焦段，广阔视野，环境交代完整，宏大场景，层次丰富'},
+    {name:'推镜头', text:'推镜头，镜头由远及近缓慢推进，逐渐靠近主体，营造聚焦感和紧张感，平滑运动'},
+    {name:'拉镜头', text:'拉镜头，镜头由近及远缓慢后拉，逐渐展示全景，揭示环境，营造开阔感'},
+    {name:'横移', text:'横移镜头，镜头水平移动，侧面平移展示场景，稳定平滑的运动轨迹'},
+    {name:'固定机位', text:'固定机位拍摄，镜头稳定不动，画面构图严谨，适合叙事和对话场景'},
+    {name:'手持', text:'手持摄影风格，画面带有自然晃动感，真实纪录片质感，临场感强'},
+    {name:'过肩', text:'过肩镜头，从人物肩后方拍摄，前景人物虚化，主体清晰，对话场景常用构图'},
+    {name:'荷兰角', text:'荷兰角倾斜构图，画面水平线倾斜，营造不安、紧张或眩晕的视觉心理效果'},
+    {name:'俯拍', text:'俯拍镜头，从高处向下拍摄，上帝视角，展示全貌和空间关系，宏大叙事感'},
+    {name:'仰拍', text:'仰拍镜头，从低处向上拍摄，主体高大威严，强调力量感和压迫感'}
+  ],
+  style: [
+    {name:'无参考', text:''},
+    {name:'写实电影风格', text:'写实电影风格，自然光影，真实质感，电影级色彩调色，浅景深，35mm胶片质感'},
+    {name:'真实3D国漫风格', text:'真实3D国漫风格，精致建模，细腻材质渲染，中国风元素融合3D动画美学'},
+    {name:'皮克斯动画风格', text:'皮克斯动画风格，圆润角色设计，温暖色调，夸张生动的表情，高品质3D渲染'},
+    {name:'国产历史正剧风格', text:'国产历史正剧风格，厚重历史感，考究的服化道，大气庄重的构图，电影级制作'},
+    {name:'超写实摄影风格', text:'超写实摄影风格，极致清晰度，完美曝光，专业级商业摄影质感，8K级细节'},
+    {name:'商业棚拍风格', text:'商业棚拍风格，专业布光，纯色背景，精致妆造，高端商业摄影质感'},
+    {name:'电影概念设计风格', text:'电影概念设计风格，大气场景设计，史诗级氛围，专业影视概念画风格'},
+    {name:'日系动画风格', text:'日系动画风格，赛璐璐上色，精致线稿，柔和色彩，动漫美学'},
+    {name:'国风水墨风格', text:'国风水墨风格，传统中国画意境，水墨晕染，留白构图，东方美学'},
+    {name:'水彩插画风格', text:'水彩插画风格，透明水彩质感，柔和色彩过渡，手绘温度感'},
+    {name:'古典油画风格', text:'古典油画风格，伦勃朗光影，丰富层次，油画质感，古典美学'},
+    {name:'漫画分镜风格', text:'漫画分镜风格，黑白漫画线条，动态构图，分镜叙事感'},
+    {name:'赛博朋克霓虹风格', text:'赛博朋克霓虹风格，霓虹灯光，未来都市，暗色调高对比，科幻氛围'},
+    {name:'科幻概念设计风格', text:'科幻概念设计风格，未来科技感，机械元素，冷色调，宏大世界观'},
+    {name:'暗黑奇幻风格', text:'暗黑奇幻风格，哥特氛围，神秘光影，暗色系，史诗奇幻感'},
+    {name:'复古胶片风格', text:'复古胶片风格，胶片颗粒感，褪色色调，怀旧氛围，80年代质感'},
+    {name:'黏土定格动画风格', text:'黏土定格动画风格，手工黏土质感，温暖色调，童话般的角色造型'},
+    {name:'低多边形3D风格', text:'低多边形3D风格，几何面片构成，简洁色彩，现代设计感'},
+    {name:'极简扁平插画风格', text:'极简扁平插画风格，简洁色块，扁平化设计，现代矢量插画美感'}
+  ],
+  reference: [
+    {name:'无参考', text:''},
+    {name:'人物设定图', text:'人物设定图，正面、侧面、背面三视图，全身展示，白色背景，角色设计稿'},
+    {name:'分镜故事板', text:'分镜故事板，多格分镜排版，镜头序列展示，叙事节奏，电影分镜风格'},
+    {name:'人物三视图', text:'人物三视图，正面视图、侧面视图、背面视图，全身角色设计，标准比例'},
+    {name:'人物对话6宫格', text:'人物对话6宫格，2行3列布局，不同表情和姿态，对话场景展示'},
+    {name:'人物对话9宫格', text:'人物对话9宫格，3行3列布局，丰富表情变化，多角度对话展示'},
+    {name:'人物对话12宫格', text:'人物对话12宫格，3行4列布局，完整表情谱，角色情感演绎'},
+    {name:'故事情节6宫格', text:'故事情节6宫格，2行3列叙事分镜，情节推进，故事板风格'},
+    {name:'故事情节9宫格', text:'故事情节9宫格，3行3列叙事分镜，完整情节线，分镜排版'},
+    {name:'故事情节12宫格', text:'故事情节12宫格，3行4列叙事分镜，完整故事流程，电影分镜板'},
+    {name:'场景四视图', text:'场景四视图，正面、侧面、背面、俯视四个角度，场景设计稿'},
+    {name:'场景六视图', text:'场景六视图，六角度场景展示，全方位环境设计，专业场景设定'}
+  ]
+};
 
 /* ==================== Helpers ==================== */
 function val(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
@@ -384,9 +528,13 @@ function showToast(msg,type){
 }
 function setGenerating(b){
   isGenerating=b;
-  document.querySelectorAll('.gen-btn').forEach(btn=>btn.disabled=b);
-  const pw=document.querySelector('.progress-wrap');
-  if(pw) pw.classList.toggle('open',b);
+  const btn=document.getElementById('submitTaskBtn');
+  if(btn){ btn.disabled=b; btn.textContent=b?'生成中...':'提交任务'; }
+}
+function formatTime(t){
+  if(!t) return '';
+  try{ const d=new Date(t); if(!isNaN(d)) return d.toLocaleString('zh-CN'); }catch(e){}
+  return t;
 }
 
 /* ==================== @ Mention System ==================== */
@@ -456,81 +604,208 @@ function insertMention(name){
   ta.focus();
 }
 
-/* ==================== Render Model Selector ==================== */
-function renderModelSelector(){
-  const c=document.getElementById('modelSelector');
-  const models=getAllModels();
-  c.innerHTML=models.map(m=>{
-    const tagCls=m.tag==='free'?'tag-free':m.tag==='paid'?'tag-paid':'tag-custom';
-    const isCustom=customModels.some(cm=>cm.id===m.id);
-    return `<div class="model-card${currentModel&&currentModel.id===m.id?' active':''}" onclick="selectModel('${m.id}')">
-      <div class="model-icon">${m.icon||'🤖'}</div>
-      <div class="model-info"><h3>${esc(m.name)}</h3><p>${esc(m.desc||'')}</p></div>
-      <span class="model-tag ${tagCls}">${esc(m.tag||'custom')}</span>
-      ${isCustom?`<button class="btn-edit" onclick="event.stopPropagation();editCustomModel('${m.id}')">✎</button>`:''}
-    </div>`;
-  }).join('')+'<div class="model-add-card" onclick="openModelModal()"><span>+</span><span>添加模型</span></div>';
-}
-function selectModel(id){
-  currentModel=getAllModels().find(m=>m.id===id);
-  renderModelSelector(); renderControls();
+/* ==================== Keyboard for Mentions ==================== */
+document.addEventListener('keydown',e=>{
+  if(!mentionState.active) return;
+  const dd=document.getElementById('mentionDropdown');
+  if(!dd.classList.contains('open')) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); mentionState.index=(mentionState.index+1)%mentionState.items.length; updateMentionActive(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); mentionState.index=(mentionState.index-1+mentionState.items.length)%mentionState.items.length; updateMentionActive(); }
+  else if(e.key==='Enter'||e.key==='Tab'){ e.preventDefault(); const it=mentionState.items[mentionState.index]; if(it) insertMention(it.name); }
+  else if(e.key==='Escape'){ hideMentionDropdown(); mentionState.active=false; }
+});
+function updateMentionActive(){
+  document.querySelectorAll('.mention-item').forEach((el,i)=>el.classList.toggle('active',i===mentionState.index));
 }
 
-/* ==================== Render Control Panel ==================== */
-function renderControls(){
-  const cp=document.getElementById('controlPanel');
-  if(!currentModel){ cp.innerHTML='<p style="color:var(--muted);text-align:center;padding:40px">请选择模型</p>'; return; }
-  const m=currentModel;
-  if(m.type==='image'){
-    cp.innerHTML=renderImageControls(m);
-  } else {
-    cp.innerHTML=renderVideoControls(m);
+/* ==================== Project Management ==================== */
+function loadProjects(){
+  try{
+    const saved=JSON.parse(localStorage.getItem('ai_studio_projects')||'null');
+    if(saved && Array.isArray(saved) && saved.length) projects=saved;
+  }catch(e){ projects=[{id:'default',name:'默认项目'}]; }
+  if(!projects.find(p=>p.id===currentProjectId)) currentProjectId=projects[0].id;
+}
+function saveProjects(){
+  localStorage.setItem('ai_studio_projects',JSON.stringify(projects));
+}
+function renderProjectTabs(){
+  const c=document.getElementById('projectTabs');
+  c.innerHTML=projects.map(p=>`
+    <div class="project-tab${p.id===currentProjectId?' active':''}" data-id="${p.id}">
+      <span class="pt-name" onclick="selectProject('${p.id}')">${esc(p.name)}</span>
+      <span class="pt-actions">
+        <button onclick="renameProject('${p.id}')" title="重命名">✎</button>
+        ${p.id!=='default'?`<button onclick="deleteProject('${p.id}')" title="删除">✕</button>`:''}
+      </span>
+    </div>`).join('') + '<div class="project-add" onclick="createProject()">+ 新建项目</div>';
+}
+function selectProject(id){
+  currentProjectId=id;
+  filters.page=1;
+  filters.selected.clear();
+  renderProjectTabs();
+  renderTaskList();
+  updateBatchPanel();
+}
+function createProject(){
+  const name=prompt('请输入项目名称:');
+  if(!name||!name.trim()) return;
+  const p={id:'proj_'+Date.now(),name:name.trim()};
+  projects.push(p);
+  currentProjectId=p.id;
+  saveProjects();
+  renderProjectTabs();
+  renderTaskList();
+  showToast('项目已创建','success');
+}
+function renameProject(id){
+  const p=projects.find(x=>x.id===id);
+  if(!p) return;
+  const name=prompt('请输入新名称:',p.name);
+  if(!name||!name.trim()) return;
+  p.name=name.trim();
+  saveProjects();
+  renderProjectTabs();
+  showToast('项目已重命名','success');
+}
+function deleteProject(id){
+  if(id==='default'){ showToast('默认项目不可删除','warn'); return; }
+  if(!confirm('确定删除此项目? 关联的任务将一并删除.')) return;
+  tasks=tasks.filter(t=>t.projectId!==id);
+  drafts=drafts.filter(d=>d.projectId!==id);
+  projects=projects.filter(p=>p.id!==id);
+  if(currentProjectId===id) currentProjectId='default';
+  saveProjects(); saveTasks(); saveDrafts();
+  renderProjectTabs();
+  renderTaskList();
+  showToast('项目已删除','success');
+}
+
+/* ==================== View Switching ==================== */
+function switchView(view){
+  currentView=view;
+  document.getElementById('viewTabTasks').classList.toggle('active',view==='tasks');
+  document.getElementById('viewTabDrafts').classList.toggle('active',view==='drafts');
+  filters.page=1;
+  renderTaskList();
+}
+
+/* ==================== Create Task Modal ==================== */
+function openCreateModal(taskId){
+  // Clear state
+  uploadedImages=[];
+  uploadedAudios=[];
+  lockedSeed=null;
+  lastSeed=null;
+  editingTaskId=taskId||null;
+
+  // Determine model: from task being edited, or first available
+  let modelToSelect=null;
+  if(taskId){
+    const task=tasks.find(t=>t.id===taskId);
+    if(task){
+      modelToSelect=getAllModels().find(m=>m.modelId===task.specs?.modelId)||getAllModels().find(m=>m.id===task.specs?.modelId);
+    }
   }
+  if(!modelToSelect) modelToSelect=currentModel||getAllModels()[0];
+  currentModel=modelToSelect;
+
+  document.getElementById('createModalTitle').textContent=taskId?'编辑任务':'创建任务';
+  renderCreateModalFields();
+  document.getElementById('createModal').classList.add('open');
+
+  // If editing, populate fields
+  if(taskId){
+    const task=tasks.find(t=>t.id===taskId);
+    if(task) populateCreateModalFromTask(task);
+  }
+  // If editing a draft, populate from draft
+  if(taskId){
+    const draft=drafts.find(d=>d.id===taskId);
+    if(draft) populateCreateModalFromDraft(draft);
+  }
+}
+
+function closeCreateModal(){
+  document.getElementById('createModal').classList.remove('open');
+  editingTaskId=null;
+}
+
+function renderCreateModalFields(){
+  const body=document.getElementById('createModalBody');
+  if(!currentModel){ body.innerHTML='<p style="color:var(--muted);text-align:center;padding:40px">请选择模型</p>'; return; }
+  const m=currentModel;
+  // Model dropdown
+  const allModels=getAllModels();
+  const modelOpts=allModels.map(mm=>{
+    const group=customModels.some(cm=>cm.id===mm.id)?'自定义模型':'预设模型';
+    return `<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'free')})</option>`;
+  }).join('');
+  const optGroups=`<optgroup label="预设模型">${allModels.filter(mm=>!customModels.some(cm=>cm.id===mm.id)).map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'free')})</option>`).join('')}</optgroup>` +
+    (customModels.length?`<optgroup label="自定义模型">${customModels.map(mm=>`<option value="${mm.id}" ${mm.id===m.id?'selected':''}>${esc(mm.icon)} ${esc(mm.name)} (${esc(mm.tag||'custom')})</option>`).join('')}</optgroup>`:'');
+
+  let html=`
+    <div class="field">
+      <label>模型</label>
+      <select id="createModelSelect" onchange="onCreateModelChange()">${optGroups}</select>
+    </div>`;
+
+  if(m.type==='image'){
+    html+=renderImageModalFields(m);
+  } else {
+    html+=renderVideoModalFields(m);
+  }
+  body.innerHTML=html;
   bindUploadEvents();
   updateRefTable();
 }
-function renderImageControls(m){
-  const tplOpts=TEMPLATES.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('');
+
+function renderTplOptgroup(label,key){
+  const items=TEMPLATES[key]||[];
+  return `<optgroup label="${label}">${items.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('')}</optgroup>`;
+}
+function renderImageModalFields(m){
+  const tplOpts=renderTplOptgroup('运镜','camera')+renderTplOptgroup('风格','style')+renderTplOptgroup('参考','reference');
   const sizeOpts=m.sizes.map(s=>`<option value="${s}">${s}</option>`).join('');
   const ratioOpts=m.ratios.map(r=>`<option value="${r}">${r}</option>`).join('');
   return `
-  <div class="section">
-    <label class="section-label">Prompt</label>
-    <div class="prompt-wrap">
-      <textarea class="textarea" id="imgPrompt" placeholder="描述你要生成的图片... 使用 @ 引用上传的图片" oninput="handlePromptInput(event)"></textarea>
+    <div class="field">
+      <label>Prompt</label>
+      <div class="prompt-wrap">
+        <textarea id="imgPrompt" placeholder="描述你要生成的图片... 使用 @ 引用上传的图片" oninput="handlePromptInput(event)"></textarea>
+      </div>
+      <div class="ref-table" id="refTable"></div>
     </div>
-    <div class="ref-table" id="refTable"></div>
-  </div>
-  <div class="section">
-    <label class="section-label">模板</label>
-    <select id="imgTemplate" onchange="applyTemplate('img')"><option value="">选择模板...</option>${tplOpts}</select>
-  </div>
-  <div class="section">
-    <div class="negative-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
-      <span>▸</span><span>负向 Prompt</span>
+    <div class="field">
+      <label>模板</label>
+      <select id="imgTemplate" onchange="applyTemplate('img')"><option value="">选择模板...</option>${tplOpts}</select>
     </div>
-    <div class="negative-body"><textarea class="textarea" id="imgNegPrompt" placeholder="不希望出现的内容..."></textarea></div>
-  </div>
-  <div class="section">
-    <label class="section-label">尺寸 & 比例</label>
-    <div class="row">
-      <select id="imgSize">${sizeOpts}</select>
-      <select id="imgRatio">${ratioOpts}</select>
+    <div class="field">
+      <div class="negative-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span>▸</span><span>负向 Prompt</span>
+      </div>
+      <div class="negative-body"><textarea id="imgNegPrompt" placeholder="不希望出现的内容..."></textarea></div>
     </div>
-  </div>
-  ${renderUploadArea('image',m)}
-  <div class="section">
-    <label class="section-label">Seed (可选)</label>
-    <div class="seed-row">
-      <input type="number" id="seedInput" placeholder="留空随机" />
-      <button class="btn-lock" id="seedLock" onclick="toggleSeedLock()" title="锁定 Seed">🔓</button>
+    <div class="field">
+      <label>尺寸 & 比例</label>
+      <div class="field-row">
+        <select id="imgSize">${sizeOpts}</select>
+        <select id="imgRatio">${ratioOpts}</select>
+      </div>
     </div>
-  </div>
-  <button class="btn btn-accent gen-btn" onclick="generateImage()">生成图片</button>
-  <div class="progress-wrap"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div><div class="progress-text" id="progressText">生成中...</div></div>`;
+    ${renderUploadArea('image',m)}
+    <div class="field">
+      <label>Seed (可选)</label>
+      <div class="seed-row">
+        <input type="number" id="seedInput" placeholder="留空随机" />
+        <button class="btn-lock" id="seedLock" onclick="toggleSeedLock()" title="锁定 Seed">🔓</button>
+      </div>
+    </div>`;
 }
-function renderVideoControls(m){
-  const tplOpts=TEMPLATES.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('');
+
+function renderVideoModalFields(m){
+  const tplOpts=renderTplOptgroup('运镜','camera')+renderTplOptgroup('风格','style')+renderTplOptgroup('参考','reference');
   const modeTabs=(m.modes||['text','reference','keyframe']).map(mode=>{
     const labels={text:'文生视频',reference:'参考图',keyframe:'关键帧'};
     return `<div class="mode-tab${mode==='text'?' active':''}" data-mode="${mode}" onclick="selectModeTab(this)">${labels[mode]||mode}</div>`;
@@ -539,46 +814,53 @@ function renderVideoControls(m){
   const sizeOpts=m.sizes.map(s=>`<option value="${s}">${s}</option>`).join('');
   const ratioOpts=m.ratios.map(r=>`<option value="${r}">${r}</option>`).join('');
   return `
-  <div class="section">
-    <label class="section-label">模式</label>
-    <div class="mode-tabs">${modeTabs}</div>
-  </div>
-  <div class="section">
-    <label class="section-label">Prompt</label>
-    <div class="prompt-wrap">
-      <textarea class="textarea" id="vidPrompt" placeholder="描述你要生成的视频... 使用 @ 引用上传的图片/音频" oninput="handlePromptInput(event)"></textarea>
+    <div class="field">
+      <label>模式</label>
+      <div class="mode-tabs">${modeTabs}</div>
     </div>
-    <div class="ref-table" id="refTable"></div>
-  </div>
-  <div class="section">
-    <label class="section-label">模板</label>
-    <select id="vidTemplate" onchange="applyTemplate('vid')"><option value="">选择模板...</option>${tplOpts}</select>
-  </div>
-  <div class="section">
-    <div class="negative-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
-      <span>▸</span><span>负向 Prompt</span>
+    <div class="field">
+      <label>Prompt</label>
+      <div class="prompt-wrap">
+        <textarea id="vidPrompt" placeholder="描述你要生成的视频... 使用 @ 引用上传的图片/音频" oninput="handlePromptInput(event)"></textarea>
+      </div>
+      <div class="ref-table" id="refTable"></div>
     </div>
-    <div class="negative-body"><textarea class="textarea" id="vidNegPrompt" placeholder="不希望出现的内容..."></textarea></div>
-  </div>
-  <div class="section">
-    <label class="section-label">时长 & 尺寸 & 比例</label>
-    <div class="row">
-      <select id="vidSeconds">${durOpts}</select>
-      <select id="vidSize">${sizeOpts}</select>
-      <select id="vidRatio">${ratioOpts}</select>
+    <div class="field">
+      <label>模板</label>
+      <select id="vidTemplate" onchange="applyTemplate('vid')"><option value="">选择模板...</option>${tplOpts}</select>
     </div>
-  </div>
-  ${renderUploadArea('video',m)}
-  <div class="section">
-    <label class="section-label">Seed (可选)</label>
-    <div class="seed-row">
-      <input type="number" id="seedInput" placeholder="留空随机" />
-      <button class="btn-lock" id="seedLock" onclick="toggleSeedLock()" title="锁定 Seed">🔓</button>
+    <div class="field">
+      <div class="negative-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
+        <span>▸</span><span>负向 Prompt</span>
+      </div>
+      <div class="negative-body"><textarea id="vidNegPrompt" placeholder="不希望出现的内容..."></textarea></div>
     </div>
-  </div>
-  <button class="btn btn-accent gen-btn" onclick="generateVideo()">生成视频</button>
-  <div class="progress-wrap"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div><div class="progress-text" id="progressText">生成中...</div></div>`;
+    <div class="field">
+      <label>时长 & 尺寸 & 比例</label>
+      <div class="field-row">
+        <select id="vidSeconds">${durOpts}</select>
+        <select id="vidSize">${sizeOpts}</select>
+        <select id="vidRatio">${ratioOpts}</select>
+      </div>
+    </div>
+    ${renderUploadArea('video',m)}
+    <div class="field">
+      <label>Seed (可选)</label>
+      <div class="seed-row">
+        <input type="number" id="seedInput" placeholder="留空随机" />
+        <button class="btn-lock" id="seedLock" onclick="toggleSeedLock()" title="锁定 Seed">🔓</button>
+      </div>
+    </div>`;
 }
+
+function onCreateModelChange(){
+  const sel=document.getElementById('createModelSelect');
+  if(!sel) return;
+  const id=sel.value;
+  currentModel=getAllModels().find(m=>m.id===id);
+  renderCreateModalFields();
+}
+
 function selectModeTab(el){
   el.parentElement.querySelectorAll('.mode-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
@@ -588,6 +870,7 @@ function selectModeTab(el){
   if(imgArea) imgArea.style.display=(mode==='text')?'none':'';
   if(audArea) audArea.style.display=(mode==='reference'&&currentModel&&currentModel.supportsAudio)?'':'none';
 }
+
 function applyTemplate(prefix){
   const sel=document.getElementById(prefix+'Template');
   if(!sel.value) return;
@@ -596,11 +879,44 @@ function applyTemplate(prefix){
   sel.value='';
 }
 
+function populateCreateModalFromTask(task){
+  if(task.prompt){
+    const ta=document.getElementById(task.type==='image'?'imgPrompt':'vidPrompt');
+    if(ta) ta.value=task.prompt;
+  }
+  if(task.specs){
+    if(task.specs.size){ const el=document.getElementById(task.type==='image'?'imgSize':'vidSize'); if(el) el.value=task.specs.size; }
+    if(task.specs.ratio){ const el=document.getElementById(task.type==='image'?'imgRatio':'vidRatio'); if(el) el.value=task.specs.ratio; }
+    if(task.specs.duration){ const el=document.getElementById('vidSeconds'); if(el) el.value=task.specs.duration; }
+    if(task.specs.mode){ const el=document.querySelector(`.mode-tab[data-mode="${task.specs.mode}"]`); if(el) selectModeTab(el); }
+    if(task.specs.negPrompt){ const negEl=document.getElementById(task.type==='image'?'imgNegPrompt':'vidNegPrompt'); if(negEl){ negEl.value=task.specs.negPrompt; negEl.closest('.negative-body')?.classList.add('open'); } }
+  }
+  if(task.seed){ const el=document.getElementById('seedInput'); if(el) el.value=task.seed; }
+}
+
+function populateCreateModalFromDraft(draft){
+  if(draft.prompt){
+    const ta=document.getElementById(draft.type==='image'?'imgPrompt':'vidPrompt');
+    if(ta) ta.value=draft.prompt;
+  }
+  if(draft.negPrompt){
+    const negEl=document.getElementById(draft.type==='image'?'imgNegPrompt':'vidNegPrompt');
+    if(negEl){ negEl.value=draft.negPrompt; negEl.closest('.negative-body')?.classList.add('open'); }
+  }
+  if(draft.specs){
+    if(draft.specs.size){ const el=document.getElementById(draft.type==='image'?'imgSize':'vidSize'); if(el) el.value=draft.specs.size; }
+    if(draft.specs.ratio){ const el=document.getElementById(draft.type==='image'?'imgRatio':'vidRatio'); if(el) el.value=draft.specs.ratio; }
+    if(draft.specs.duration){ const el=document.getElementById('vidSeconds'); if(el) el.value=draft.specs.duration; }
+    if(draft.specs.mode){ const el=document.querySelector(`.mode-tab[data-mode="${draft.specs.mode}"]`); if(el) selectModeTab(el); }
+  }
+  if(draft.seed){ const el=document.getElementById('seedInput'); if(el) el.value=draft.seed; }
+}
+
 /* ==================== Upload Handlers ==================== */
 function renderUploadArea(type,m){
   const imgArea=`
-  <div class="section">
-    <label class="section-label">参考图片</label>
+  <div class="field">
+    <label>参考图片</label>
     <div class="upload-area" id="uploadImageArea" onclick="document.getElementById('imageFileInput').click()">
       <div class="upload-icon">🖼</div>
       <div class="upload-hint">点击或拖拽上传图片</div>
@@ -609,8 +925,8 @@ function renderUploadArea(type,m){
     <div class="upload-cards" id="imageCards"></div>
   </div>`;
   const audArea=(type==='video'&&m.supportsAudio)?`
-  <div class="section" id="uploadAudioSection">
-    <label class="section-label">参考音频</label>
+  <div class="field" id="uploadAudioSection">
+    <label>参考音频</label>
     <div class="upload-area" id="uploadAudioArea" onclick="document.getElementById('audioFileInput').click()">
       <div class="upload-icon">🎵</div>
       <div class="upload-hint">点击或拖拽上传音频 (MP3/WAV)</div>
@@ -704,36 +1020,175 @@ function toggleSeedLock(){
   }
 }
 
-/* ==================== Image Generation ==================== */
-async function generateImage(){
+/* ==================== Submit Task ==================== */
+function submitTask(){
   if(!currentModel){ showToast('请先选择模型','error'); return; }
   const key=getApiKey();
   if(!key){ showToast('请先输入 API Key','error'); return; }
-  const prompt=processPrompt(val('imgPrompt'));
+  const isImage=currentModel.type==='image';
+  const prompt=processPrompt(val(isImage?'imgPrompt':'vidPrompt'));
   if(!prompt){ showToast('请输入 Prompt','error'); return; }
-  setGenerating(true); updateProgress(0,'提交中...');
+  if(isGenerating){ showToast('当前有任务正在生成，请稍候','warn'); return; }
+
+  // Build specs
+  let specs={ modelId:currentModel.modelId, modelName:currentModel.name, type:currentModel.type };
+  let seed=getSeedValue();
+  if(isImage){
+    specs.size=val('imgSize');
+    specs.ratio=val('imgRatio');
+    specs.negPrompt=getNegPrompt('imgNegPrompt');
+  } else {
+    specs.mode=document.querySelector('.mode-tab.active')?.dataset.mode||'text';
+    specs.duration=val('vidSeconds');
+    specs.size=val('vidSize');
+    specs.ratio=val('vidRatio');
+    specs.negPrompt=getNegPrompt('vidNegPrompt');
+    specs.supportsAudio=currentModel.supportsAudio;
+  }
+  if(seed) specs.seed=seed;
+
+  // Create task
+  const task={
+    id:'task_'+Date.now(),
+    type:currentModel.type,
+    status:'generating',
+    src:null,
+    prompt:prompt,
+    time:new Date().toISOString(),
+    seed:seed||null,
+    model:currentModel.name,
+    specs:specs,
+    projectId:currentProjectId,
+    progress:0,
+    error:null,
+    params:{
+      model:currentModel.modelId,
+      prompt:prompt,
+      size:specs.size,
+      aspect_ratio:specs.ratio,
+      images:uploadedImages.map(i=>i.dataUri),
+      negative_prompt:specs.negPrompt||'',
+      seed:seed||null
+    }
+  };
+  if(!isImage){
+    task.params.seconds=specs.duration;
+    task.params.mode=specs.mode;
+    task.params.audios=(specs.mode!=='text'&&currentModel.supportsAudio)?uploadedAudios.map(a=>a.dataUri):[];
+  }
+
+  // If editing, remove old task
+  if(editingTaskId){
+    const idx=tasks.findIndex(t=>t.id===editingTaskId);
+    if(idx>-1) tasks.splice(idx,1);
+    editingTaskId=null;
+  }
+
+  tasks.unshift(task);
+  saveTasks();
+  closeCreateModal();
+  // Switch to task list view
+  currentView='tasks';
+  document.getElementById('viewTabTasks').classList.add('active');
+  document.getElementById('viewTabDrafts').classList.remove('active');
+  renderTaskList();
+
+  // Start generation
+  currentTask=task;
+  if(isImage){
+    generateImage();
+  } else {
+    generateVideo();
+  }
+}
+
+/* ==================== Save Draft ==================== */
+function saveDraft(){
+  if(!currentModel){ showToast('请先选择模型','error'); return; }
+  const isImage=currentModel.type==='image';
+  const prompt=val(isImage?'imgPrompt':'vidPrompt');
+  if(!prompt){ showToast('请输入 Prompt','error'); return; }
+
+  let specs={ modelId:currentModel.modelId, modelName:currentModel.name, type:currentModel.type };
+  let seed=getSeedValue();
+  if(isImage){
+    specs.size=val('imgSize');
+    specs.ratio=val('imgRatio');
+    specs.negPrompt=getNegPrompt('imgNegPrompt');
+  } else {
+    specs.mode=document.querySelector('.mode-tab.active')?.dataset.mode||'text';
+    specs.duration=val('vidSeconds');
+    specs.size=val('vidSize');
+    specs.ratio=val('vidRatio');
+    specs.negPrompt=getNegPrompt('vidNegPrompt');
+  }
+  if(seed) specs.seed=seed;
+
+  const draft={
+    id:'draft_'+Date.now(),
+    type:currentModel.type,
+    prompt:prompt,
+    negPrompt:specs.negPrompt||'',
+    specs:specs,
+    seed:seed||null,
+    time:new Date().toISOString(),
+    projectId:currentProjectId,
+    images:uploadedImages.map(i=>({name:i.name})),
+    audios:uploadedAudios.map(a=>({name:a.name}))
+  };
+
+  drafts.unshift(draft);
+  saveDrafts();
+  closeCreateModal();
+  showToast('已保存到暂存列表','success');
+}
+
+function saveDrafts(){
+  localStorage.setItem('ai_studio_drafts',JSON.stringify(drafts));
+}
+function loadDrafts(){
+  try{ drafts=JSON.parse(localStorage.getItem('ai_studio_drafts')||'[]'); }catch(e){ drafts=[]; }
+}
+
+/* ==================== Image Generation ==================== */
+async function generateImage(){
+  if(!currentModel||!currentTask){ showToast('生成错误: 无当前任务','error'); return; }
+  const key=getApiKey();
+  if(!key){ showToast('请先输入 API Key','error'); currentTask.status='failed'; currentTask.error='未设置API Key'; saveTasks(); renderTaskList(); return; }
+  const prompt=currentTask.prompt;
+  if(!prompt){ showToast('请输入 Prompt','error'); currentTask.status='failed'; currentTask.error='Prompt为空'; saveTasks(); renderTaskList(); return; }
+  setGenerating(true);
   try{
-    const body={ model:currentModel.modelId, prompt, size:val('imgSize'), aspect_ratio:val('imgRatio') };
-    const imgs=uploadedImages.map(i=>i.dataUri);
+    currentTask.progress=5; currentTask.statusText='提交中...'; renderTaskList();
+    const body={ model:currentModel.modelId, prompt, size:currentTask.params.size, aspect_ratio:currentTask.params.aspect_ratio };
+    const imgs=currentTask.params.images||[];
     if(imgs.length) body.images=imgs;
-    const neg=getNegPrompt('imgNegPrompt');
+    const neg=currentTask.params.negative_prompt;
     if(neg) body.negative_prompt=neg;
-    const seed=getSeedValue();
+    const seed=currentTask.params.seed;
     if(seed) body.seed=seed;
+    currentTask.progress=15; currentTask.statusText='请求生成中...'; renderTaskList();
     let resp=await fetch('/api/images/generations',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
     const respText=await resp.text();
     let data; try{ data=JSON.parse(respText); }catch(e){ throw new Error(respText||`HTTP ${resp.status}`); }
     if(!resp.ok){ const errMsg=data?.error?.message||data?.detail||data?.message||respText||`HTTP ${resp.status}`; throw new Error(errMsg); }
-    // Extract URL from response — API returns result immediately in data.data[0].url
+    // Extract URL from response
     let imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.output?.[0]||data.images?.[0];
-    if(imgUrl){ updateProgress(100,'完成'); showImageResult(imgUrl,prompt,seed); await addToHistory('image',imgUrl,prompt,seed); return; }
-    // Only poll if no URL yet but has task_id
+    if(imgUrl){
+      currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
+      await completeTaskWithMedia(currentTask,imgUrl);
+      return;
+    }
+    // Poll if task_id present
     if(data.task_id||data.id||data.request_id){
+      currentTask.backendTaskId=data.task_id||data.id||data.request_id;
+      currentTask.progress=20; currentTask.statusText='排队中...'; saveTasks(); renderTaskList();
       let pollCount=0;
       while(true){
         pollCount++;
         if(pollCount>120) throw new Error('生成超时');
-        updateProgress(Math.min(90,pollCount/120*90),'生成中 '+pollCount+'...');
+        currentTask.progress=Math.max(20,Math.min(90,20+pollCount/120*70));
+        renderTaskList();
         await new Promise(r=>setTimeout(r,3000));
         const pid=data.task_id||data.id||data.request_id;
         const pollResp=await fetch(`/api/tasks/${pid}`,{headers:{'Authorization':'Bearer '+key}});
@@ -741,26 +1196,57 @@ async function generateImage(){
         try{ data=JSON.parse(pollText); }catch(e){ continue; }
         if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
           imgUrl=data.data?.[0]?.url||data.image_url||data.url||data.data?.image_url||data.data?.url||data.metadata?.url||data.output?.[0];
-          if(imgUrl){ updateProgress(100,'完成'); showImageResult(imgUrl,prompt,seed); await addToHistory('image',imgUrl,prompt,seed); return; }
+          if(imgUrl){
+            currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
+            await completeTaskWithMedia(currentTask,imgUrl); return;
+          }
         }
         if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
+        const apiProg=data.progress||data.percent;
+        if(apiProg&&typeof apiProg==='number'&&apiProg>0){ currentTask.progress=Math.max(currentTask.progress,Math.min(90,apiProg)); currentTask.statusText=data.status||'生成中...'; }
+        else { currentTask.statusText=data.status||'生成中...'; }
       }
     }
     throw new Error('未获取到图片结果');
-  }catch(e){ showToast('生成失败: '+e.message,'error'); }
-  finally{ setGenerating(false); }
+  }catch(e){
+    showToast('生成失败: '+e.message,'error');
+    if(currentTask){
+      currentTask.status='failed';
+      currentTask.error=e.message;
+      saveTasks();
+      renderTaskList();
+    }
+  }
+  finally{ setGenerating(false); currentTask=null; }
 }
+
+/* Helper: download media to local and complete task */
+async function completeTaskWithMedia(task,srcUrl){
+  let localSrc=srcUrl;
+  if(srcUrl&&!srcUrl.startsWith('/media/')&&!srcUrl.startsWith('/tmp/')&&!srcUrl.startsWith('blob:')){
+    try{
+      const resp=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:srcUrl,type:task.type})});
+      const data=await resp.json();
+      if(data.success&&data.url) localSrc=data.url;
+    }catch(e){ console.error('Download failed:',e); }
+  }
+  task.status='completed';
+  task.src=localSrc;
+  task.progress=100;
+  lastSeed=task.seed;
+  saveTasks();
+  renderTaskList();
+}
+
 /* Helper: download media via backend proxy (avoids CORS) */
 async function downloadMedia(url, filename){
   try{
-    // If already a local path (/media/xxx), download directly
     if(url.startsWith('/media/') || url.startsWith('/tmp/')){
       const a=document.createElement('a');
       a.href=url; a.download=filename;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       return;
     }
-    // Remote URL: fetch through backend and trigger download
     const resp=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,filename})});
     const data=await resp.json();
     if(data.success && data.url){
@@ -775,59 +1261,69 @@ async function downloadMedia(url, filename){
   }
 }
 
-function showImageResult(url,prompt,seed){
-  const ra=document.getElementById('resultArea');
-  ra.innerHTML=`<div class="result-content">
-    <img src="${url}" alt="result" />
-    <div class="result-actions"><button class="btn btn-accent" onclick="downloadMedia('${url}','image_${Date.now()}.png')">⬇ 下载</button></div>
-    <div class="result-meta">
-      <div class="meta-row"><span class="meta-label">模型</span><span class="meta-val">${esc(currentModel.name)}</span></div>
-      <div class="meta-row"><span class="meta-label">Prompt</span><span class="meta-val">${esc(prompt)}</span></div>
-      ${seed?`<div class="meta-row"><span class="meta-label">Seed</span><span class="meta-val">${seed}</span></div>`:''}
-    </div>
-  </div>`;
-}
-
 /* ==================== Video Generation ==================== */
 async function generateVideo(){
-  if(!currentModel){ showToast('请先选择模型','error'); return; }
+  if(!currentModel||!currentTask){ showToast('生成错误: 无当前任务','error'); return; }
   const key=getApiKey();
-  if(!key){ showToast('请先输入 API Key','error'); return; }
-  const prompt=processPrompt(val('vidPrompt'));
-  if(!prompt){ showToast('请输入 Prompt','error'); return; }
-  const mode=document.querySelector('.mode-tab.active')?.dataset.mode||'text';
-  setGenerating(true); updateProgress(0,'提交中...');
+  if(!key){ showToast('请先输入 API Key','error'); currentTask.status='failed'; currentTask.error='未设置API Key'; saveTasks(); renderTaskList(); return; }
+  const prompt=currentTask.prompt;
+  if(!prompt){ showToast('请输入 Prompt','error'); currentTask.status='failed'; currentTask.error='Prompt为空'; saveTasks(); renderTaskList(); return; }
+  const mode=currentTask.params.mode||'text';
+  setGenerating(true);
   try{
-    const body={ model:currentModel.modelId, prompt, seconds:String(val('vidSeconds')), mode, size:val('vidSize'), aspect_ratio:val('vidRatio') };
+    currentTask.progress=5; currentTask.statusText='提交中...'; renderTaskList();
+    const body={ model:currentModel.modelId, prompt, seconds:String(currentTask.params.seconds), mode, size:currentTask.params.size, aspect_ratio:currentTask.params.aspect_ratio };
     if(mode==='reference'||mode==='keyframe'){
-      const imgs=uploadedImages.map(i=>i.dataUri);
+      const imgs=currentTask.params.images||[];
       if(imgs.length) body.images=imgs;
-      const auds=uploadedAudios.map(a=>a.dataUri);
+      const auds=currentTask.params.audios||[];
       if(auds.length&&currentModel.supportsAudio) body.audios=auds;
     }
-    const neg=getNegPrompt('vidNegPrompt');
+    const neg=currentTask.params.negative_prompt;
     if(neg) body.negative_prompt=neg;
-    const seed=getSeedValue();
+    const seed=currentTask.params.seed;
     if(seed) body.seed=seed;
+    currentTask.progress=15; currentTask.statusText='请求生成中...'; renderTaskList();
     let resp=await fetch('/api/videos',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)});
     const respText=await resp.text();
     let data; try{ data=JSON.parse(respText); }catch(e){ throw new Error(respText||`HTTP ${resp.status}`); }
     if(!resp.ok){ const errMsg=data?.error?.message||data?.detail||data?.message||respText||`HTTP ${resp.status}`; throw new Error(errMsg); }
     const videoId=data.task_id||data.id||data.request_id||data.video_id;
     if(videoId){
-      const url=await pollVideoTask(videoId,key,(p,status)=>updateProgress(p,'生成中 '+Math.round(p)+'%'+(status?' ('+status+')':'')));
-      updateProgress(100,'完成'); showVideoResult(url,prompt,seed); await addToHistory('video',url,prompt,seed);
+      currentTask.backendTaskId=videoId;
+      currentTask.progress=20; currentTask.statusText='排队中...'; saveTasks(); renderTaskList();
+      const url=await pollVideoTask(videoId,key,(p,status)=>{
+        currentTask.progress=Math.round(p);
+        currentTask.statusText=status||'生成中...';
+        renderTaskList();
+      });
+      currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
+      await completeTaskWithMedia(currentTask,url);
     } else {
       const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
-      if(url){ updateProgress(100,'完成'); showVideoResult(url,prompt,seed); await addToHistory('video',url,prompt,seed); }
+      if(url){
+        currentTask.progress=90; currentTask.statusText='下载保存中...'; renderTaskList();
+        await completeTaskWithMedia(currentTask,url);
+      }
       else throw new Error('未获取到视频结果');
     }
-  }catch(e){ showToast('生成失败: '+e.message,'error'); }
-  finally{ setGenerating(false); }
+  }catch(e){
+    showToast('生成失败: '+e.message,'error');
+    if(currentTask){
+      currentTask.status='failed';
+      currentTask.error=e.message;
+      saveTasks();
+      renderTaskList();
+    }
+  }
+  finally{ setGenerating(false); currentTask=null; }
 }
+
+/* ==================== Poll Video Task ==================== */
 async function pollVideoTask(videoId,apiKey,onProgress){
-  const maxRetries=120;
+  const maxRetries=200; // 200 * 3s = 10 minutes
   let lastProgress=0;
+  let notFoundCount=0;
   for(let i=0;i<maxRetries;i++){
     await new Promise(r=>setTimeout(r,3000));
     const resp=await fetch(`/api/tasks/${videoId}`,{headers:{'Authorization':'Bearer '+apiKey}});
@@ -837,105 +1333,506 @@ async function pollVideoTask(videoId,apiKey,onProgress){
       continue;
     }
     if(!resp.ok){
-      if(resp.status===404) throw new Error('任务不存在或已过期');
+      if(resp.status===404){
+        notFoundCount++;
+        if(notFoundCount>10) throw new Error('任务不存在或已过期（连续10次404）');
+        if(onProgress){ onProgress(Math.max(lastProgress,5), '等待任务创建...'); }
+        continue;
+      }
       if(i>3) console.warn('Poll HTTP',resp.status);
       continue;
     }
-    if(data.status==='completed'||data.status==='succeeded'||data.state==='SUCCESS'){
-      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url;
+    // Check various status formats the API might return
+    const status=data.status||data.state||'';
+    const statusLower=String(status).toLowerCase();
+    if(statusLower==='completed'||statusLower==='succeeded'||statusLower==='success'||status==='SUCCESS'){
+      const url=data.metadata?.url||data.video_url||data.url||data.data?.video_url||data.data?.url||data.output?.url||data.result?.url;
       if(url) return url;
-      throw new Error('视频已完成但未获取到URL');
+      throw new Error('视频已完成但未获取到URL: '+JSON.stringify(data).substring(0,300));
     }
-    if(data.state==='FAILED'||data.status==='failed') throw new Error(data.error?.message||data.error||'生成失败');
-    const apiProgress=data.progress??0;
-    if(apiProgress>lastProgress) lastProgress=apiProgress;
+    if(statusLower==='failed'||status==='FAILED'){
+      throw new Error(data.error?.message||data.error||data.message||'生成失败');
+    }
+    const apiProgress=data.progress??data.percent??0;
+    if(apiProgress&&typeof apiProgress==='number'&&apiProgress>0){ lastProgress=Math.max(lastProgress,apiProgress); }
     if(onProgress){
-      const displayProgress=Math.max(lastProgress,Math.min(90,(i/maxRetries)*100));
-      onProgress(displayProgress, data.status||data.state||'');
+      const displayProgress=Math.max(lastProgress,Math.min(90,20+(i/maxRetries)*70));
+      onProgress(displayProgress, status||'生成中...');
     }
   }
-  throw new Error('生成超时（已等待6分钟）');
+  throw new Error('生成超时（已等待10分钟）');
 }
-function showVideoResult(url,prompt,seed){
-  const ra=document.getElementById('resultArea');
-  ra.innerHTML=`<div class="result-content">
-    <video src="${url}" controls autoplay loop></video>
-    <div class="result-actions"><button class="btn btn-accent" onclick="downloadMedia('${url}','video_${Date.now()}.mp4')">⬇ 下载</button></div>
-    <div class="result-meta">
-      <div class="meta-row"><span class="meta-label">模型</span><span class="meta-val">${esc(currentModel.name)}</span></div>
-      <div class="meta-row"><span class="meta-label">Prompt</span><span class="meta-val">${esc(prompt)}</span></div>
-      ${seed?`<div class="meta-row"><span class="meta-label">Seed</span><span class="meta-val">${seed}</span></div>`:''}
+
+/* ==================== Task List Rendering ==================== */
+function renderTaskList(){
+  const container=document.getElementById('taskListContainer');
+
+  // Get items based on current view
+  let items;
+  if(currentView==='drafts'){
+    items=drafts.filter(d=>d.projectId===currentProjectId);
+  } else {
+    items=tasks.filter(t=>t.projectId===currentProjectId);
+  }
+
+  // Apply status filter (only for tasks view)
+  if(currentView==='tasks' && filters.status!=='all'){
+    items=items.filter(t=>t.status===filters.status);
+  }
+
+  // Apply sort
+  if(filters.sort==='desc'){
+    items.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  } else {
+    items.sort((a,b)=>new Date(a.time)-new Date(b.time));
+  }
+
+  // Pagination
+  const total=items.length;
+  const totalPages=Math.max(1,Math.ceil(total/filters.perPage));
+  if(filters.page>totalPages) filters.page=totalPages;
+  const start=(filters.page-1)*filters.perPage;
+  const pageItems=items.slice(start,start+filters.perPage);
+
+  // Update task count badge
+  const badge=document.getElementById('taskCountBadge');
+  const projectTasks=tasks.filter(t=>t.projectId===currentProjectId);
+  badge.textContent=`任务列表(${projectTasks.length})`;
+
+  // Update stats
+  updateStats();
+
+  // Render
+  if(!pageItems.length){
+    container.innerHTML=`<div class="task-empty"><div class="empty-icon">${currentView==='drafts'?'📝':'📋'}</div><p>${currentView==='drafts'?'暂无暂存任务':'暂无任务，点击"创建任务"开始'}</p></div>`;
+    document.getElementById('pagination').style.display='none';
+    return;
+  }
+
+  container.innerHTML=pageItems.map(t=>currentView==='drafts'?renderDraftCard(t):renderTaskCard(t)).join('');
+  document.getElementById('pagination').style.display=totalPages>1?'flex':'none';
+  renderPagination(totalPages);
+}
+
+function renderTaskCard(task){
+  const statusInfo={
+    completed:{text:'已完成',cls:'status-completed'},
+    generating:{text:'生成中',cls:'status-generating'},
+    failed:{text:'失败',cls:'status-failed'}
+  };
+  const si=statusInfo[task.status]||statusInfo.completed;
+  const isImg=task.type==='image';
+  const isGenerating=task.status==='generating';
+  const thumb=task.src
+    ?(isImg?`<img src="${esc(task.src)}" alt="" />`:`<video src="${esc(task.src)}" muted></video>`)
+    :`<div class="task-thumb-placeholder">${isImg?'🖼':'🎬'}</div>`;
+
+  const specsParts=[];
+  if(task.specs?.modelName) specsParts.push(['渠道',task.specs.modelName]);
+  if(task.specs?.size) specsParts.push(['分辨率',task.specs.size]);
+  if(task.specs?.ratio) specsParts.push(['比例',task.specs.ratio]);
+  if(task.specs?.duration) specsParts.push(['时长',task.specs.duration+'s']);
+  if(task.specs?.mode) specsParts.push(['模式',task.specs.mode]);
+  const specsHtml=specsParts.map(([k,v])=>`<span class="spec-item">${k}: ${esc(v)}</span>`).join('');
+
+  const isSelected=filters.selected.has(task.id);
+  const expanded=task._expanded;
+
+  // Progress bar in card header (visible even when collapsed)
+  const progressHtml=isGenerating?`
+    <div class="card-progress-wrap">
+      <div class="card-progress-bar"><div class="card-progress-fill" style="width:${task.progress||0}%"></div></div>
+      <span class="card-progress-text">${task.statusText||'生成中'} ${task.progress||0}%</span>
+    </div>`:'';
+
+  let detailHtml='';
+  if(expanded){
+    const mediaHtml=task.src
+      ?(isImg?`<img src="${esc(task.src)}" alt="result" />`:`<video src="${esc(task.src)}" controls autoplay loop></video>`)
+      :(isGenerating
+        ?`<div style="padding:20px;color:var(--muted);text-align:center"><div class="task-progress-bar"><div class="task-progress-fill" style="width:${task.progress||0}%"></div></div><p style="margin-top:8px">${esc(task.statusText||'生成中')} ${task.progress||0}%</p></div>`
+        :`<div style="padding:20px;color:var(--error);text-align:center">生成失败: ${esc(task.error||'未知错误')}</div>`);
+    detailHtml=`
+      <div class="task-detail">
+        <div class="task-detail-media">${mediaHtml}</div>
+        ${task.src?`<div style="text-align:center;margin-top:8px"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();downloadMedia('${esc(task.src)}','${task.type}_${task.id}')">下载</button></div>`:''}
+        <div class="task-detail-meta">
+          <div class="meta-row"><span class="meta-label">模型</span><span class="meta-val">${esc(task.model||task.specs?.modelName||'')}</span></div>
+          <div class="meta-row"><span class="meta-label">类型</span><span class="meta-val">${isImg?'图片':'视频'}</span></div>
+          <div class="meta-row"><span class="meta-label">时间</span><span class="meta-val">${esc(formatTime(task.time))}</span></div>
+          <div class="meta-row"><span class="meta-label">Seed</span><span class="meta-val">${task.seed?esc(task.seed):'随机'}</span></div>
+          <div class="meta-row" style="grid-column:1/-1"><span class="meta-label">Prompt</span><span class="meta-val">${esc(task.prompt)}</span></div>
+          ${task.error?`<div class="meta-row" style="grid-column:1/-1"><span class="meta-label">错误</span><span class="meta-val" style="color:var(--error)">${esc(task.error)}</span></div>`:''}
+        </div>
+      </div>`;
+  }
+
+  return `
+  <div class="task-card${expanded?' expanded':''}" id="card-${task.id}">
+    <div class="task-card-header" onclick="toggleTaskExpand('${task.id}')">
+      <input type="checkbox" class="task-checkbox" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleTaskSelect('${task.id}',this.checked)" />
+      <span class="task-status ${si.cls}">${si.text}</span>
+      <span class="task-time">${esc(formatTime(task.time))}</span>
+      <span class="task-id">#${esc(task.id.substring(0,20))}</span>
+      <span class="task-expand-icon">▼</span>
+    </div>
+    ${progressHtml}
+    <div class="task-card-body">
+      <div class="task-thumb">${thumb}</div>
+      <div class="task-info">
+        <div class="task-prompt">${esc(task.prompt)}</div>
+        <div class="task-specs">${specsHtml}</div>
+      </div>
+    </div>
+    <div class="task-actions">
+      <button class="btn btn-sm" onclick="event.stopPropagation();resubmitTask('${task.id}')">再次提交</button>
+      <button class="btn btn-sm" onclick="event.stopPropagation();editTask('${task.id}')">编辑</button>
+      <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteTask('${task.id}')">删除</button>
+    </div>
+    ${detailHtml}
+  </div>`;
+}
+
+function renderDraftCard(draft){
+  const isImg=draft.type==='image';
+  const specsParts=[];
+  if(draft.specs?.modelName) specsParts.push(['渠道',draft.specs.modelName]);
+  if(draft.specs?.size) specsParts.push(['分辨率',draft.specs.size]);
+  if(draft.specs?.ratio) specsParts.push(['比例',draft.specs.ratio]);
+  if(draft.specs?.duration) specsParts.push(['时长',draft.specs.duration+'s']);
+  if(draft.specs?.mode) specsParts.push(['模式',draft.specs.mode]);
+  const specsHtml=specsParts.map(([k,v])=>`<span class="spec-item">${k}: ${esc(v)}</span>`).join('');
+
+  return `
+  <div class="task-card" id="card-${draft.id}">
+    <div class="task-card-header">
+      <span class="task-status status-generating">暂存</span>
+      <span class="task-time">${esc(formatTime(draft.time))}</span>
+      <span class="task-id">#${esc(draft.id.substring(0,20))}</span>
+    </div>
+    <div class="task-card-body">
+      <div class="task-thumb"><div class="task-thumb-placeholder">${isImg?'🖼':'🎬'}</div></div>
+      <div class="task-info">
+        <div class="task-prompt">${esc(draft.prompt)}</div>
+        <div class="task-specs">${specsHtml}</div>
+      </div>
+    </div>
+    <div class="task-actions">
+      <button class="btn btn-sm btn-primary" onclick="submitDraft('${draft.id}')">提交</button>
+      <button class="btn btn-sm" onclick="editDraft('${draft.id}')">编辑</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteDraft('${draft.id}')">删除</button>
     </div>
   </div>`;
 }
-function updateProgress(pct,text){
-  const fill=document.getElementById('progressFill');
-  const txt=document.getElementById('progressText');
-  if(fill) fill.style.width=pct+'%';
-  if(txt&&text) txt.textContent=text;
+
+function renderPagination(totalPages){
+  const c=document.getElementById('pagination');
+  let html='';
+  if(filters.page>1) html+=`<button class="btn btn-sm" onclick="goToPage(${filters.page-1})">上一页</button>`;
+  html+=`<span class="page-info">第 ${filters.page} / ${totalPages} 页</span>`;
+  if(filters.page<totalPages) html+=`<button class="btn btn-sm" onclick="goToPage(${filters.page+1})">下一页</button>`;
+  c.innerHTML=html;
+}
+function goToPage(p){ filters.page=p; renderTaskList(); }
+
+function toggleTaskExpand(id){
+  const task=tasks.find(t=>t.id===id);
+  if(!task) return;
+  task._expanded=!task._expanded;
+  renderTaskList();
 }
 
-/* ==================== History ==================== */
-function loadHistory(){
-  try{ history=JSON.parse(localStorage.getItem('ai_studio_history')||'[]'); }catch(e){ history=[]; }
+function toggleTaskSelect(id,checked){
+  if(checked) filters.selected.add(id); else filters.selected.delete(id);
+  updateBatchPanel();
+  // Update select-all checkbox
+  const sa=document.getElementById('selectAllCheckbox');
+  if(sa){
+    const visible=tasks.filter(t=>t.projectId===currentProjectId);
+    const allSelected=visible.length>0&&visible.every(t=>filters.selected.has(t.id));
+    sa.checked=allSelected;
+  }
+}
+
+function toggleSelectAll(checked){
+  const visible=tasks.filter(t=>t.projectId===currentProjectId);
+  if(checked){
+    visible.forEach(t=>filters.selected.add(t.id));
+  } else {
+    filters.selected.clear();
+  }
+  renderTaskList();
+  updateBatchPanel();
+}
+
+function updateBatchPanel(){
+  const panel=document.getElementById('batchPanel');
+  const info=document.getElementById('batchInfo');
+  const count=filters.selected.size;
+  panel.classList.toggle('open',count>0);
+  info.textContent=`已选择 ${count} 个任务`;
+}
+
+function clearSelection(){
+  filters.selected.clear();
+  document.getElementById('selectAllCheckbox').checked=false;
+  renderTaskList();
+  updateBatchPanel();
+}
+
+function batchDeleteTasks(){
+  if(!filters.selected.size) return;
+  if(!confirm(`确定删除 ${filters.selected.size} 个任务?`)) return;
+  tasks=tasks.filter(t=>!filters.selected.has(t.id));
+  filters.selected.clear();
+  saveTasks();
+  renderTaskList();
+  updateBatchPanel();
+  showToast('批量删除完成','success');
+}
+
+/* ==================== Task Actions ==================== */
+function resubmitTask(id){
+  const task=tasks.find(t=>t.id===id);
+  if(!task) return;
+  if(isGenerating){ showToast('当前有任务正在生成，请稍候','warn'); return; }
+  // Create a new task with same params
+  const newTask={
+    ...JSON.parse(JSON.stringify(task)),
+    id:'task_'+Date.now(),
+    status:'generating',
+    src:null,
+    time:new Date().toISOString(),
+    progress:0,
+    error:null,
+    _expanded:false
+  };
+  tasks.unshift(newTask);
+  saveTasks();
+  renderTaskList();
+  currentTask=newTask;
+  // Find the model
+  currentModel=getAllModels().find(m=>m.modelId===task.specs?.modelId)||getAllModels().find(m=>m.id===task.specs?.modelId)||currentModel;
+  if(task.type==='image'){
+    generateImage();
+  } else {
+    generateVideo();
+  }
+}
+
+function editTask(id){
+  openCreateModal(id);
+}
+
+function deleteTask(id){
+  if(!confirm('确定删除此任务?')) return;
+  tasks=tasks.filter(t=>t.id!==id);
+  filters.selected.delete(id);
+  saveTasks();
+  renderTaskList();
+  updateBatchPanel();
+  showToast('任务已删除','success');
+}
+
+function submitDraft(id){
+  const draft=drafts.find(d=>d.id===id);
+  if(!draft) return;
+  // Find model
+  currentModel=getAllModels().find(m=>m.modelId===draft.specs?.modelId)||getAllModels().find(m=>m.id===draft.specs?.modelId)||getAllModels()[0];
+  if(!currentModel) return;
+  // Build task from draft
+  const isImage=currentModel.type==='image';
+  const task={
+    id:'task_'+Date.now(),
+    type:currentModel.type,
+    status:'generating',
+    src:null,
+    prompt:draft.prompt,
+    time:new Date().toISOString(),
+    seed:draft.seed||null,
+    model:draft.specs?.modelName||currentModel.name,
+    specs:{...draft.specs},
+    projectId:currentProjectId,
+    progress:0,
+    error:null,
+    params:{
+      model:currentModel.modelId,
+      prompt:draft.prompt,
+      size:draft.specs?.size,
+      aspect_ratio:draft.specs?.ratio,
+      images:[],
+      negative_prompt:draft.negPrompt||'',
+      seed:draft.seed||null
+    }
+  };
+  if(!isImage){
+    task.params.seconds=draft.specs?.duration;
+    task.params.mode=draft.specs?.mode;
+    task.params.audios=[];
+  }
+  // Remove draft
+  drafts=drafts.filter(d=>d.id!==id);
+  saveDrafts();
+  // Add task and start generation
+  tasks.unshift(task);
+  saveTasks();
+  currentView='tasks';
+  document.getElementById('viewTabTasks').classList.add('active');
+  document.getElementById('viewTabDrafts').classList.remove('active');
+  renderTaskList();
+  currentTask=task;
+  if(isImage){
+    generateImage();
+  } else {
+    generateVideo();
+  }
+}
+
+function editDraft(id){
+  const draft=drafts.find(d=>d.id===id);
+  if(!draft) return;
+  // Open create modal with draft data
+  currentModel=getAllModels().find(m=>m.modelId===draft.specs?.modelId)||getAllModels().find(m=>m.id===draft.specs?.modelId)||getAllModels()[0];
+  editingTaskId=draft.id; // use as marker for draft editing
+  uploadedImages=[];
+  uploadedAudios=[];
+  lockedSeed=null;
+  document.getElementById('createModalTitle').textContent='编辑暂存任务';
+  renderCreateModalFields();
+  populateCreateModalFromDraft(draft);
+  document.getElementById('createModal').classList.add('open');
+  // Override save draft to update existing
+  // We'll handle this in submitTask/saveDraft by checking editingTaskId in drafts
+}
+
+function deleteDraft(id){
+  if(!confirm('确定删除此暂存任务?')) return;
+  drafts=drafts.filter(d=>d.id!==id);
+  saveDrafts();
+  renderTaskList();
+  showToast('暂存任务已删除','success');
+}
+
+/* ==================== Filters ==================== */
+function applyFilters(){
+  filters.status=document.getElementById('statusFilter').value;
+  filters.sort=document.getElementById('sortSelect').value;
+  filters.page=1;
+  renderTaskList();
+}
+function onPerPageChange(){
+  filters.perPage=parseInt(document.getElementById('perPageSelect').value);
+  filters.page=1;
+  renderTaskList();
+}
+function refreshTasks(){
+  loadTasks();
+  renderTaskList();
+  showToast('已刷新','success');
+}
+function cleanupFailedTasks(){
+  const failedCount=tasks.filter(t=>t.status==='failed'&&t.projectId===currentProjectId).length;
+  if(!failedCount){ showToast('没有失败任务可清理','warn'); return; }
+  if(!confirm(`确定清理 ${failedCount} 个失败任务?`)) return;
+  tasks=tasks.filter(t=>!(t.status==='failed'&&t.projectId===currentProjectId));
+  saveTasks();
+  renderTaskList();
+  showToast('已清理失败任务','success');
+}
+function updateStats(){
+  const projectTasks=tasks.filter(t=>t.projectId===currentProjectId);
+  const completed=projectTasks.filter(t=>t.status==='completed').length;
+  const generating=projectTasks.filter(t=>t.status==='generating').length;
+  const failed=projectTasks.filter(t=>t.status==='failed').length;
+  const total=projectTasks.length;
+  document.getElementById('statsInfo').textContent=`共 ${total} 个 | 已完成 ${completed} | 生成中 ${generating} | 失败 ${failed}`;
+}
+
+/* ==================== Task Persistence ==================== */
+function migrateHistoryToTasks(){
+  try{
+    const oldHistory=JSON.parse(localStorage.getItem('ai_studio_history')||'[]');
+    if(oldHistory.length && !tasks.length){
+      tasks=oldHistory.map((h,i)=>{
+        const dt=h.time?new Date(h.time):new Date();
+        if(isNaN(dt)) h.time=new Date().toISOString();
+        else { try{ h.time=new Date(h.time).toISOString(); }catch(e){ h.time=new Date().toISOString(); } }
+        return {
+          id:'migrated_'+i+'_'+Date.now(),
+          type:h.type||'image',
+          status:'completed',
+          src:h.src,
+          prompt:h.prompt||'',
+          time:h.time,
+          seed:h.seed||null,
+          model:'Unknown',
+          specs:{},
+          projectId:'default',
+          progress:100,
+          error:null
+        };
+      });
+      localStorage.removeItem('ai_studio_history');
+      saveTasks();
+      return true;
+    }
+  }catch(e){ console.warn('Migration failed:',e); }
+  return false;
+}
+function loadTasks(){
+  try{ tasks=JSON.parse(localStorage.getItem('ai_studio_tasks')||'[]'); }catch(e){ tasks=[]; }
+  // Migrate old history
+  if(!tasks.length) migrateHistoryToTasks();
+  // Fetch from backend
   fetch('/api/history').then(r=>r.json()).then(data=>{
     if(data.success&&data.history&&data.history.length>0){
-      const backendUrls=data.history.map(h=>h.src);
-      const localOnly=history.filter(h=>!backendUrls.includes(h.src));
-      history=[...data.history,...localOnly].slice(0,50);
-      renderHistory();
+      // Backend stores tasks format (or old history format)
+      const backendTasks=data.history.map(h=>{
+        if(h.id&&h.status) return h; // already task format
+        // Old history format - convert
+        return {
+          id:h.id||('backend_'+Date.now()+'_'+Math.random().toString(36).substr(2,6)),
+          type:h.type||'image',
+          status:'completed',
+          src:h.src,
+          prompt:h.prompt||'',
+          time:h.time||new Date().toISOString(),
+          seed:h.seed||null,
+          model:h.model||'Unknown',
+          specs:h.specs||{},
+          projectId:h.projectId||'default',
+          progress:100,
+          error:null
+        };
+      });
+      const backendIds=backendTasks.map(t=>t.id);
+      const localOnly=tasks.filter(t=>!backendIds.includes(t.id));
+      const merged=[...tasks,...backendTasks.filter(bt=>!tasks.some(t=>t.id===bt.id))];
+      // Deduplicate by id, keeping local (newer) versions
+      const seen=new Map();
+      merged.forEach(t=>{ seen.set(t.id,t); });
+      tasks=[...seen.values()].sort((a,b)=>new Date(b.time)-new Date(a.time));
+      renderTaskList();
     }
   }).catch(()=>{});
 }
-function saveHistory(){
-  localStorage.setItem('ai_studio_history',JSON.stringify(history));
-  fetch('/api/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history})}).catch(()=>{});
-}
-async function addToHistory(type,src,prompt,seed){
-  let localSrc=src;
-  if(src&&!src.startsWith('/media/')&&!src.startsWith('/tmp/')&&!src.startsWith('blob:')){
-    try{
-      const resp=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:src,type})});
-      const data=await resp.json();
-      if(data.success&&data.url) localSrc=data.url;
-    }catch(e){ console.error('Download failed:',e); }
-  }
-  history.unshift({type,src:localSrc,prompt,time:new Date().toLocaleString(),seed:seed||null});
-  if(history.length>50) history=history.slice(0,50);
-  saveHistory(); renderHistory();
-}
-function renderHistory(){
-  const g=document.getElementById('historyGrid');
-  if(!history.length){ g.innerHTML='<div class="history-empty">暂无历史记录</div>'; return; }
-  g.innerHTML=history.map((h,i)=>{
-    const isImg=h.type==='image';
-    const thumb=isImg?`<img src="${esc(h.src)}" alt="" />`:`<video src="${esc(h.src)}" muted></video>`;
-    return `<div class="history-item" onclick="viewHistory(${i})">
-      ${thumb}
-      <span class="h-type ${isImg?'h-type-img':'h-type-vid'}">${isImg?'IMG':'VID'}</span>
-    </div>`;
-  }).join('');
-}
-function viewHistory(i){
-  const h=history[i];
-  if(!h) return;
-  const ra=document.getElementById('resultArea');
-  const media=h.type==='image'?`<img src="${esc(h.src)}" alt="result" />`:`<video src="${esc(h.src)}" controls autoplay loop></video>`;
-  ra.innerHTML=`<div class="result-content">
-    ${media}
-    <div class="result-actions"><button class="btn btn-accent" onclick="downloadMedia('${esc(h.src)}','${h.type}_${i}')">⬇ 下载</button></div>
-    <div class="result-meta">
-      <div class="meta-row"><span class="meta-label">类型</span><span class="meta-val">${h.type==='image'?'图片':'视频'}</span></div>
-      <div class="meta-row"><span class="meta-label">Prompt</span><span class="meta-val">${esc(h.prompt)}</span></div>
-      <div class="meta-row"><span class="meta-label">时间</span><span class="meta-val">${esc(h.time)}</span></div>
-      ${h.seed?`<div class="meta-row"><span class="meta-label">Seed</span><span class="meta-val">${esc(h.seed)}</span></div>`:''}
-    </div>
-  </div>`;
-}
-function clearHistory(){
-  if(!confirm('确定清空所有历史记录?')) return;
-  history=[]; saveHistory(); renderHistory();
-  showToast('历史记录已清空','success');
+function saveTasks(){
+  // Strip non-serializable fields before saving
+  const toSave=tasks.map(t=>{
+    const copy={...t};
+    delete copy._expanded;
+    // Don't save large data URIs in params.images/params.audios to localStorage
+    if(copy.params){
+      const p={...copy.params};
+      if(p.images) p.images=p.images.map(()=>null); // placeholder
+      if(p.audios) p.audios=p.audios.map(()=>null);
+      copy.params=p;
+    }
+    return copy;
+  });
+  localStorage.setItem('ai_studio_tasks',JSON.stringify(toSave));
+  // Save to backend
+  fetch('/api/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:toSave})}).catch(()=>{});
 }
 
 /* ==================== Custom Models ==================== */
@@ -1004,7 +1901,7 @@ function saveCustomModel(){
   if(idx>-1) customModels[idx]=model; else customModels.push(model);
   saveCustomModels();
   if(currentModel&&currentModel.id===model.id) currentModel=model;
-  renderModelSelector(); renderCustomModelList();
+  renderCustomModelList();
   showToast('模型已保存','success');
   closeModelModal();
 }
@@ -1039,8 +1936,8 @@ function deleteCustomModel(id){
   if(!confirm('确定删除此模型?')) return;
   customModels=customModels.filter(m=>m.id!==id);
   saveCustomModels();
-  if(currentModel&&currentModel.id===id){ currentModel=getAllModels()[0]; renderControls(); }
-  renderModelSelector(); renderCustomModelList();
+  if(currentModel&&currentModel.id===id){ currentModel=getAllModels()[0]; }
+  renderCustomModelList();
   showToast('模型已删除','success');
 }
 function renderCustomModelList(){
@@ -1050,39 +1947,11 @@ function renderCustomModelList(){
     <div class="modal-list-item">
       <span>${esc(m.icon)} ${esc(m.name)} <span style="color:var(--muted)">(${esc(m.modelId)})</span></span>
       <span>
-        <button class="btn" style="padding:4px 10px;font-size:11px" onclick="editCustomModel('${m.id}')">编辑</button>
-        <button class="btn" style="padding:4px 10px;font-size:11px;border-color:var(--error);color:var(--error)" onclick="deleteCustomModel('${m.id}')">删除</button>
+        <button class="btn btn-sm" onclick="editCustomModel('${m.id}')">编辑</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCustomModel('${m.id}')">删除</button>
       </span>
     </div>`).join('');
 }
-
-/* ==================== Keyboard for Mentions ==================== */
-document.addEventListener('keydown',e=>{
-  if(!mentionState.active) return;
-  const dd=document.getElementById('mentionDropdown');
-  if(!dd.classList.contains('open')) return;
-  if(e.key==='ArrowDown'){ e.preventDefault(); mentionState.index=(mentionState.index+1)%mentionState.items.length; updateMentionActive(); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); mentionState.index=(mentionState.index-1+mentionState.items.length)%mentionState.items.length; updateMentionActive(); }
-  else if(e.key==='Enter'||e.key==='Tab'){ e.preventDefault(); const it=mentionState.items[mentionState.index]; if(it) insertMention(it.name); }
-  else if(e.key==='Escape'){ hideMentionDropdown(); mentionState.active=false; }
-});
-function updateMentionActive(){
-  document.querySelectorAll('.mention-item').forEach((el,i)=>el.classList.toggle('active',i===mentionState.index));
-}
-
-/* ==================== Init ==================== */
-window.addEventListener('load',async ()=>{
-  if(window.electronAPI && window.electronAPI.getApiKey){
-    try{ cachedApiKey=await window.electronAPI.getApiKey()||''; }catch(e){ cachedApiKey=''; }
-  }
-  const saved=getApiKey();
-  if(saved) document.getElementById('apiKey').value=saved;
-  loadCustomModels();
-  currentModel=getAllModels()[0];
-  loadHistory(); renderHistory();
-  renderModelSelector(); renderControls();
-  initUpdater();
-});
 
 /* ==================== Auto Update ==================== */
 function isElectron(){
@@ -1100,12 +1969,10 @@ async function initUpdater(){
     const badge=document.getElementById('versionBadge');
     if(badge) badge.textContent='v'+ver;
 
-    // Listen for auto-update events
     window.electronAPI.onUpdateAvailable((info)=>{
       showUpdateBanner(info.version, info.releaseNotes);
     });
     window.electronAPI.onDownloadProgress((progress)=>{
-      const banner=document.getElementById('updateBanner');
       const right=document.getElementById('updateBannerRight');
       if(right){
         right.innerHTML='<div style="text-align:center"><div>下载中 '+progress.percent+'%</div><div class="update-progress-bar"><div class="update-progress-fill" style="width:'+progress.percent+'%"></div></div></div>';
@@ -1181,6 +2048,30 @@ async function installUpdate(){
   if(!isElectron()) return;
   await window.electronAPI.installUpdate();
 }
+
+/* ==================== Init ==================== */
+window.addEventListener('load',async ()=>{
+  if(window.electronAPI && window.electronAPI.getApiKey){
+    try{ cachedApiKey=await window.electronAPI.getApiKey()||''; }catch(e){ cachedApiKey=''; }
+  }
+  const saved=getApiKey();
+  if(saved) document.getElementById('apiKey').value=saved;
+  loadCustomModels();
+  loadProjects();
+  loadDrafts();
+  currentModel=getAllModels()[0];
+  loadTasks();
+  renderProjectTabs();
+  renderTaskList();
+  initUpdater();
+});
+
+// Close modals on overlay click
+document.addEventListener('click',e=>{
+  if(e.target.classList.contains('modal-overlay')){
+    e.target.classList.remove('open');
+  }
+});
 </script>
 </body>
 </html>
