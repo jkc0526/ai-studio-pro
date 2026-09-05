@@ -449,11 +449,9 @@ a{color:var(--accent);text-decoration:none}
 <div class="pagination" id="pagination" style="display:none"></div>
 
 </div><!-- /taskView -->
-</div><!-- /app-main -->
-</div><!-- /app-layout -->
 
 <!-- ===== Settings View ===== -->
-<div id="settingsView" style="display:none;padding:24px 32px;overflow-y:auto;height:calc(100vh - 56px)">
+<div id="settingsView" style="display:none;padding:24px 32px;overflow-y:auto;box-sizing:border-box">
   <h2 style="font-size:20px;margin:0 0 20px 0;font-weight:600">设置</h2>
 
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden">
@@ -500,6 +498,8 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 </div>
+</div><!-- /app-main -->
+</div><!-- /app-layout -->
 
 <!-- Mention Dropdown -->
 <div class="mention-dropdown" id="mentionDropdown"></div>
@@ -961,20 +961,29 @@ function switchAppView(view){
   const chatView = document.getElementById('chatView');
   const taskView = document.getElementById('taskView');
   const settingsView = document.getElementById('settingsView');
+  const topbar = document.querySelector('.topbar');
   document.querySelectorAll('.sidebar-item').forEach(function(el){ el.classList.remove('active'); });
   var sidebarItem = document.querySelector('.sidebar-item[data-view="' + view + '"]');
   if(sidebarItem) sidebarItem.classList.add('active');
   if(view === 'chat'){
     chatView.style.display = '';
-    if(taskView) taskView.style.display = 'none';
+    chatView.style.height = 'calc(100vh - 56px)';
+    if(taskView) { taskView.style.display = 'none'; }
     if(settingsView) settingsView.style.display = 'none';
+    if(topbar) topbar.style.display = '';
   } else if(view === 'settings'){
-    if(chatView) chatView.style.display = 'none';
-    if(taskView) taskView.style.display = 'none';
-    if(settingsView){ settingsView.style.display = ''; initSettingsView(); }
+    if(chatView) { chatView.style.display = 'none'; }
+    if(taskView) { taskView.style.display = 'none'; }
+    if(topbar) topbar.style.display = 'none';
+    if(settingsView){ 
+      settingsView.style.display = 'block';
+      settingsView.style.height = '100vh';
+      initSettingsView();
+    }
   } else {
-    if(chatView) chatView.style.display = 'none';
+    if(chatView) { chatView.style.display = 'none'; }
     if(settingsView) settingsView.style.display = 'none';
+    if(topbar) topbar.style.display = '';
     if(taskView){
       taskView.style.display = '';
       if(view === 'images'){
