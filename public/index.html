@@ -454,23 +454,20 @@ a{color:var(--accent);text-decoration:none}
 
 <!-- ===== Settings View ===== -->
 <div id="settingsView" style="display:none;padding:24px 32px;overflow-y:auto;height:calc(100vh - 56px)">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-    <h2 style="font-size:20px;margin:0">设置</h2>
-    <button class="btn btn-primary" onclick="checkForUpdates()" style="display:flex;align-items:center;gap:6px;font-size:13px">🔄 检测更新</button>
-  </div>
+  <h2 style="font-size:20px;margin:0 0 20px 0;font-weight:600">设置</h2>
 
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden">
     <div style="padding:16px 20px;cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none" onclick="toggleSection('aboutSection')">
-      <span id="aboutArrow" style="transition:transform .2s;display:inline-block;color:var(--muted)">▼</span>
+      <span id="aboutArrow" style="transition:transform .2s;display:inline-block;color:var(--muted);font-size:12px">▼</span>
       <span style="font-weight:600;font-size:15px">关于与更新</span>
       <span style="font-size:12px;color:var(--muted);margin-left:4px">当前版本与更新日志</span>
     </div>
-    <div id="aboutSection" style="padding:0 20px 20px 20px;border-top:1px solid var(--border)">
-      <h3 style="font-size:16px;margin:20px 0 8px 0">关于与更新</h3>
+    <div id="aboutSection" style="padding:20px;border-top:1px solid var(--border);display:none">
       <p style="font-size:13px;color:var(--muted);margin:0 0 16px 0">查看当前版本与历次更新内容。发现新版本后可下载并重启完成更新。仅显示最近 3 个版本的更新说明。</p>
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
           <span style="font-size:14px">当前版本 <strong id="settingsVersionText">v?</strong></span>
+          <button class="btn btn-primary" onclick="checkForUpdates()" style="display:flex;align-items:center;gap:6px;font-size:13px">🔄 检测更新</button>
         </div>
         <div id="changelogList"></div>
       </div>
@@ -479,17 +476,26 @@ a{color:var(--accent);text-decoration:none}
 
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
     <div style="padding:16px 20px;cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none" onclick="toggleSection('apiSection')">
-      <span id="apiArrow" style="transition:transform .2s;display:inline-block;color:var(--muted)">▼</span>
+      <span id="apiArrow" style="transition:transform .2s;display:inline-block;color:var(--muted);font-size:12px">▼</span>
       <span style="font-weight:600;font-size:15px">模型与提供商</span>
       <span style="font-size:12px;color:var(--muted);margin-left:4px">功能默认模型、语音识别与 API 提供商</span>
     </div>
-    <div id="apiSection" style="padding:0 20px 20px 20px;border-top:1px solid var(--border)">
-      <div style="margin-top:16px">
-        <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px">Agnes API Key</label>
+    <div id="apiSection" style="padding:20px;border-top:1px solid var(--border);display:none">
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;color:var(--text);display:block;margin-bottom:6px;font-weight:500">Agnes API Key</label>
         <div style="display:flex;gap:8px">
-          <input type="password" id="settingsApiKey" placeholder="输入 API Key..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none" />
+          <input type="password" id="settingsApiKey" placeholder="输入 API Key..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;outline:none;color:var(--text)" />
           <button class="btn btn-primary" onclick="saveSettingsApiKey()">保存</button>
         </div>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0 0 0">API Key 保存在本地，仅用于 Agnes API 请求</p>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;color:var(--text);display:block;margin-bottom:6px;font-weight:500">YanBa 对话 API Key</label>
+        <div style="display:flex;gap:8px">
+          <input type="password" id="settingsYanbaKey" placeholder="输入 YanBa API Key..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;outline:none;color:var(--text)" />
+          <button class="btn btn-primary" onclick="saveYanbaKey()">保存</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0 0 0">用于对话助手模型（gemini/gpt系列）</p>
       </div>
     </div>
   </div>
@@ -2476,12 +2482,12 @@ function closeChangelog(){
 
 function toggleSection(sectionId){
   var sec=document.getElementById(sectionId);
-  var arrowId=sectionId.replace('Section','Arrow')||sectionId.replace(/Section$/,'Arrow');
+  var arrowId=sectionId.replace('Section','Arrow');
   var arrow=document.getElementById(arrowId);
   if(!sec) return;
-  var isOpen=sec.style.display!==''&&sec.style.display!=='none';
-  sec.style.display=isOpen?'none':'';
-  if(arrow) arrow.style.transform=isOpen?'rotate(0deg)':'rotate(180deg)';
+  var isHidden=sec.style.display==='none'||sec.style.display==='';
+  sec.style.display=isHidden?'block':'none';
+  if(arrow) arrow.style.transform=isHidden?'rotate(0deg)':'rotate(-90deg)';
 }
 
 function initSettingsView(){
@@ -2491,6 +2497,14 @@ function initSettingsView(){
   var savedKey=getApiKey();
   var apiKeyInput=document.getElementById('settingsApiKey');
   if(apiKeyInput) apiKeyInput.value=savedKey||'';
+  var yanbaKey=localStorage.getItem('yanba_api_key')||'';
+  var yanbaInput=document.getElementById('settingsYanbaKey');
+  if(yanbaInput) yanbaInput.value=yanbaKey;
+  /* 默认展开关于与更新 */
+  var aboutSec=document.getElementById('aboutSection');
+  var aboutArrow=document.getElementById('aboutArrow');
+  if(aboutSec) aboutSec.style.display='block';
+  if(aboutArrow) aboutArrow.style.transform='rotate(0deg)';
 }
 
 function renderChangelogList(){
@@ -2499,12 +2513,12 @@ function renderChangelogList(){
   var entries=CHANGELOG.slice(0,3);
   if(entries.length===0){ container.innerHTML='<p style="color:var(--muted);font-size:13px">暂无更新记录</p>'; return; }
   var html='';
-  entries.forEach(function(entry){
-    html+='<div style="margin-bottom:16px;padding-bottom:16px;'+(entry!==entries[0]?'border-top:1px solid var(--border);padding-top:16px;margin-top:16px':'')+'">';
-    html+='<div style="font-weight:600;font-size:14px;color:var(--text);margin-bottom:8px">v'+esc(entry.version)+' <span style="color:var(--muted);font-weight:normal;font-size:12px;margin-left:6px">'+esc(entry.date)+'</span></div>';
-    html+='<ul style="margin:0;padding:0;list-style:none;color:var(--text);font-size:13px;line-height:1.8">';
+  entries.forEach(function(entry, idx){
+    html+='<div style="'+(idx>0?'margin-top:16px;padding-top:16px;border-top:1px solid var(--border)':'')+'">';
+    html+='<div style="font-weight:600;font-size:14px;color:var(--text);margin-bottom:8px"><span style="display:inline-block;background:var(--accent);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;margin-right:8px;font-weight:500">v'+esc(entry.version)+'</span><span style="color:var(--muted);font-weight:normal;font-size:12px">'+esc(entry.date)+'</span></div>';
+    html+='<ul style="margin:0;padding:0;list-style:none;color:var(--text);font-size:13px;line-height:1.9">';
     entry.items.forEach(function(item){
-      html+='<li style="padding-left:14px;position:relative;margin-bottom:3px"><span style="position:absolute;left:0;color:var(--muted)">·</span>'+esc(item)+'</li>';
+      html+='<li style="padding-left:14px;position:relative;margin-bottom:2px;color:var(--text-secondary)"><span style="position:absolute;left:0;color:var(--muted)">·</span>'+esc(item)+'</li>';
     });
     html+='</ul></div>';
   });
@@ -2516,7 +2530,13 @@ function saveSettingsApiKey(){
   localStorage.setItem('agnes_api_key', key);
   cachedApiKey=key;
   if(window.electronAPI&&window.electronAPI.setApiKey) window.electronAPI.setApiKey(key);
-  showToast('API Key 已保存','success');
+  showToast('Agnes API Key 已保存','success');
+}
+
+function saveYanbaKey(){
+  var key=val('settingsYanbaKey');
+  localStorage.setItem('yanba_api_key', key);
+  showToast('YanBa API Key 已保存','success');
 }
 
 function showUpdateBanner(version, notes){
