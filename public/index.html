@@ -655,9 +655,9 @@ let lastShownVersion = localStorage.getItem('last_shown_version')||'';
 
 /* ==================== Preset Models ==================== */
 const PRESET_MODELS = [
-  {id:'img-flash', name:'Image 2.5 Flash', modelId:'agnes-image-2.5-flash', type:'image', tag:'free', icon:'🖼', desc:'1K-4K 图片生成', sizes:['1K','2K','4K'], ratios:['1:1','16:9','9:16','4:3','3:4']},
-  {id:'vid-flash', name:'Video 2.5 Flash', modelId:'agnes-video-2.5-flash', type:'video', tag:'free', icon:'🎬', desc:'720P 视频', sizes:['720P'], ratios:['16:9','9:16','4:3','1:1'], modes:['text','reference','keyframe'], maxImages:5, durations:[4,5,6,7,8,9,10,11,12], supportsAudio:true},
-  {id:'vid-full', name:'Video 2.5', modelId:'agnes-video-2.5', type:'video', tag:'paid', icon:'🎥', desc:'720P-2K 视频', sizes:['720P','960P','2K'], ratios:['16:9','9:16','4:3','1:1'], modes:['text','reference','keyframe'], maxImages:5, durations:[4,5,6,7,8,9,10,11,12], supportsAudio:true, supportsVideoRef:true}
+  {id:'img-flash', name:'Image 2.5 Flash', modelId:'agnes-image-2.5-flash', type:'image', tag:'free', icon:'🖼', desc:'1K-4K 图片生成', sizes:['1K','2K','4K'], ratios:['1:1','16:9','9:16','4:3','3:4','3:2','21:9']},
+  {id:'vid-flash', name:'Video 2.5 Flash', modelId:'agnes-video-2.5-flash', type:'video', tag:'free', icon:'🎬', desc:'720P 视频', sizes:['720P'], ratios:['16:9','9:16','4:3','1:1','21:9','3:4'], modes:['text','reference','keyframe'], maxImages:5, durations:[4,5,6,7,8,9,10,11,12], supportsAudio:true},
+  {id:'vid-full', name:'Video 2.5', modelId:'agnes-video-2.5', type:'video', tag:'paid', icon:'🎥', desc:'720P-2K 视频', sizes:['720P','960P','2K'], ratios:['16:9','9:16','4:3','1:1','21:9','3:4'], modes:['text','reference','keyframe'], maxImages:5, durations:[4,5,6,7,8,9,10,11,12], supportsAudio:true, supportsVideoRef:true}
 ];
 
 /* ==================== Video Shot Templates ==================== */
@@ -674,6 +674,41 @@ const TEMPLATES = [
   {name:'荷兰角', text:'荷兰角倾斜构图，画面水平线倾斜，营造不安、紧张或眩晕的视觉心理效果'},
   {name:'俯拍', text:'俯拍镜头，从高处向下拍摄，上帝视角，展示全貌和空间关系，宏大叙事感'},
   {name:'仰拍', text:'仰拍镜头，从低处向上拍摄，主体高大威严，强调力量感和压迫感'}
+];
+
+/* ==================== Video Style Presets (视频风格) ==================== */
+const VIDEO_STYLES = [
+  {name:'无风格',text:''},
+  {name:'写实电影',text:'cinematic film look, Hollywood cinematography, film grain, anamorphic lens flare, color grading, shallow depth of field, natural lighting, photorealistic, 4K quality, realistic physics and motion'},
+  {name:'日系动画',text:'Japanese anime style, cel-shading, clean line art, vibrant colors, Studio Ghibli aesthetic, soft bloom lighting, expressive characters, detailed backgrounds, smooth 2D animation motion'},
+  {name:'3D国漫',text:'Chinese 3D animation style, CG render, Unreal Engine quality, PBR materials, subsurface scattering, volumetric lighting, xianxia fantasy aesthetic, detailed character faces, silk cloth physics, cinematic CG motion'},
+  {name:'皮克斯动画',text:'Pixar/Disney 3D animation style, vibrant colors, exaggerated expressions, soft rounded characters, subsurface scattering, warm lighting, family-friendly, stylized yet detailed, smooth cartoon animation'},
+  {name:'赛博朋克',text:'cyberpunk aesthetic, neon lights, rain-soaked streets, holographic signs, magenta-cyan color palette, Blade Runner atmosphere, volumetric fog, futuristic technology, lens bokeh, dark sci-fi mood'},
+  {name:'复古胶片',text:'vintage film aesthetic, 1980s film stock look, Kodachrome colors, film grain, light leaks, warm sepia tones, soft focus edges, Super 8mm feel, chromatic aberration, nostalgic atmosphere, faded saturation'},
+  {name:'纪录片',text:'documentary style, natural handheld camera, realistic lighting, authentic locations, natural color palette, cinéma vérité, raw and unfiltered, real-world textures, observational camera movement'},
+  {name:'水墨国风',text:'Chinese ink wash painting animation style, sumi-e ink flowing, xuan paper texture, brush stroke aesthetics, misty mountains, ethereal atmosphere, monochrome with subtle color, traditional guohua painting in motion, poetic atmosphere'},
+  {name:'暗黑奇幻',text:'dark fantasy, Gothic atmosphere, moody low-key lighting, medieval ruins, supernatural elements, fog and shadow, candlelight vs cool shadows, dramatic tension, Brothers Grimm aesthetic, cinematic dark mood'}
+];
+
+/* ==================== Character Consistency Presets (角色一致性增强词) ==================== */
+const CHARACTER_ENHANCERS = [
+  {name:'无',text:''},
+  {name:'角色一致性（强）',text:'character consistency maintained throughout, same face, same hairstyle, same outfit, same body proportions, character continuity across frames, no face distortion, consistent facial features, consistent clothing colors'},
+  {name:'角色一致性（中）',text:'maintain same character appearance, consistent face and outfit'},
+  {name:'多人镜头',text:'multiple characters in frame, each character maintains consistent appearance, clear spatial relationship between characters, natural interaction poses, eye-line match'}
+];
+
+/* ==================== Camera Motion Presets (运镜增强) ==================== */
+const CAMERA_MOTIONS = [
+  {name:'无',text:''},
+  {name:'缓慢推进',text:'slow dolly in, camera gradually moves closer to subject, smooth push in motion, cinematic'},
+  {name:'缓慢拉远',text:'slow dolly out, camera gradually pulls back to reveal wider scene, smooth reveal'},
+  {name:'环绕拍摄',text:'orbit shot, camera circles around subject, 360 degree arc movement, parallax effect'},
+  {name:'跟拍跟随',text:'tracking shot, camera follows moving subject, steady cam movement, natural following motion'},
+  {name:'升降镜头',text:'crane shot, camera rises or descends vertically, revealing environment, dramatic reveal'},
+  {name:'摇镜头',text:'pan shot, camera rotates horizontally left or right, scanning across scene'},
+  {name:'变焦推近',text:'slow zoom in, focal length changes to magnify subject, Hitchcock zoom feel'},
+  {name:'手持晃动',text:'handheld camera, subtle natural shake, documentary realism, cinéma vérité style'}
 ];
 
 /* ==================== Image Style Templates (20种) ==================== */
@@ -1079,6 +1114,9 @@ function renderImageModalFields(m){
 
 function renderVideoModalFields(m){
   const tplOpts=TEMPLATES.map(t=>`<option value="${esc(t.text)}">${esc(t.name)}</option>`).join('');
+  const vStyleOpts=VIDEO_STYLES.map(s=>`<option value="${esc(s.text)}">${esc(s.name)}</option>`).join('');
+  const charOpts=CHARACTER_ENHANCERS.map(c=>`<option value="${esc(c.text)}">${esc(c.name)}</option>`).join('');
+  const camOpts=CAMERA_MOTIONS.map(c=>`<option value="${esc(c.text)}">${esc(c.name)}</option>`).join('');
   const modeTabs=(m.modes||['text','reference','keyframe']).map(mode=>{
     const labels={text:'文生视频',reference:'参考图',keyframe:'关键帧'};
     return `<div class="mode-tab${mode==='text'?' active':''}" data-mode="${mode}" onclick="selectModeTab(this)">${labels[mode]||mode}</div>`;
@@ -1092,15 +1130,29 @@ function renderVideoModalFields(m){
       <div class="mode-tabs">${modeTabs}</div>
     </div>
     <div class="field">
-      <label>Prompt</label>
+      <label>风格预设</label>
+      <select id="vidStyleSelect">${vStyleOpts}</select>
+    </div>
+    <div class="field">
+      <label>Prompt（画面描述）</label>
       <div class="prompt-wrap">
-        <textarea id="vidPrompt" placeholder="描述你要生成的视频... 使用 @ 引用上传的图片/音频" oninput="handlePromptInput(event)"></textarea>
+        <textarea id="vidPrompt" placeholder="描述你要生成的视频内容... 风格/运镜/角色一致会自动添加" oninput="handlePromptInput(event)"></textarea>
       </div>
       <div class="ref-table" id="refTable"></div>
     </div>
+    <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label style="font-size:12px;margin-bottom:4px">运镜</label>
+        <select id="vidCameraSelect" style="font-size:12px">${camOpts}</select>
+      </div>
+      <div>
+        <label style="font-size:12px;margin-bottom:4px">角色一致性</label>
+        <select id="vidCharSelect" style="font-size:12px">${charOpts}</select>
+      </div>
+    </div>
     <div class="field">
-      <label>模板</label>
-      <select id="vidTemplate" onchange="applyTemplate('vid')"><option value="">选择模板...</option>${tplOpts}</select>
+      <label>镜头模板</label>
+      <select id="vidTemplate" onchange="applyTemplate('vid')"><option value="">选择镜头模板...</option>${tplOpts}</select>
     </div>
     <div class="field">
       <div class="negative-toggle" onclick="this.nextElementSibling.classList.toggle('open')">
@@ -1167,6 +1219,23 @@ function buildImagePrompt(){
   if(theme) parts.push(theme);
   if(styleText) parts.push(styleText);
   if(compText) parts.push(compText);
+  return parts.join(', ');
+}
+
+/* 组合视频最终prompt：主题 + 风格 + 运镜 + 角色一致性 */
+function buildVideoPrompt(){
+  const theme=val('vidPrompt');
+  const styleSel=document.getElementById('vidStyleSelect');
+  const camSel=document.getElementById('vidCameraSelect');
+  const charSel=document.getElementById('vidCharSelect');
+  const styleText=styleSel?styleSel.value:'';
+  const camText=camSel?camSel.value:'';
+  const charText=charSel?charSel.value:'';
+  const parts=[];
+  if(theme) parts.push(theme);
+  if(styleText) parts.push(styleText);
+  if(camText) parts.push(camText);
+  if(charText) parts.push(charText);
   return parts.join(', ');
 }
 
@@ -1321,7 +1390,7 @@ function submitTask(){
   if(isImage){
     prompt=processPrompt(buildImagePrompt());
   }else{
-    prompt=processPrompt(val('vidPrompt'));
+    prompt=processPrompt(buildVideoPrompt());
   }
   if(!prompt){ showToast('请输入 Prompt','error'); return; }
   if(isGenerating){ showToast('当前有任务正在生成，请稍候','warn'); return; }
