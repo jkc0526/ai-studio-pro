@@ -1,0 +1,33 @@
+{
+  "name": "weave-canvas",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "description": "AI 漫剧创作流水线：剧本·分镜·角色一致性·批量生图·图生视频·成片导出",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node server/index.js",
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "app": "electron .",
+    "app:dev": "npm run build && electron .",
+    "pack": "npm run build && node electron/build.mjs",
+    "test": "node --no-warnings test/smoke.mjs",
+    "release": "node scripts/release.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.3.5",
+    "express": "^4.21.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^39.8.10",
+    "vite": "^6.0.7"
+  },
+  "main": "electron/main.js"
+}

@@ -1,0 +1,23 @@
+# 依赖与构建产物
+node_modules/
+dist/
+release/
+
+# 运行时数据（含数据库、生成产物、密钥，绝不入库）
+data/
+WeaveCanvas-data/
+
+# 本地缓存与临时文件
+.vite/
+*.log
+npm-debug.log*
+.cache/
+
+# 测试截图
+screenshot-*.png
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
