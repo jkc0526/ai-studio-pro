@@ -272,8 +272,14 @@ app.get('/api/assets', wrap((req, res) => ok(res,
 /* ---------------- 剧本 ---------------- */
 const projId = () => q.one('SELECT id FROM project ORDER BY create_time LIMIT 1')?.id || null;
 
-app.get('/api/scripts', wrap((req, res) => ok(res,
-  q.all('SELECT * FROM script ORDER BY update_time DESC'))));
+app.get('/api/scripts', wrap((req, res) => {
+  const rows = q.all('SELECT * FROM script ORDER BY update_time DESC');
+  ok(res, rows.map((s) => {
+    const st = q.one('SELECT COUNT(*) total, SUM(CASE WHEN image_url IS NOT NULL THEN 1 ELSE 0 END) withImage, SUM(CASE WHEN video_url IS NOT NULL THEN 1 ELSE 0 END) withVideo FROM shot WHERE script_id = ?', s.id);
+    const cover = q.one('SELECT image_url FROM shot WHERE script_id = ? AND image_url IS NOT NULL ORDER BY seq LIMIT 1', s.id);
+    return { ...s, shot_count: st?.total || 0, image_count: st?.withImage || 0, video_count: st?.withVideo || 0, cover: cover?.image_url || null };
+  }));
+}));
 
 app.post('/api/scripts', wrap((req, res) => {
   const id = uid('sc');
@@ -322,11 +328,12 @@ app.put('/api/shots/:id', wrap((req, res) => {
   const cur = q.one('SELECT * FROM shot WHERE id = ?', req.params.id);
   if (!cur) return fail(res, '镜头不存在', 404);
   const b = req.body || {};
-  q.run(`UPDATE shot SET seq = ?, scene = ?, dialogue = ?, camera = ?, duration = ?,
+  q.run(`UPDATE shot SET seq = ?, scene = ?, dialogue = ?, camera = ?, duration = ?, ratio = ?,
          character_ids = ?, style_id = ?, image_url = ?, video_url = ?, status = ?, error = ?, update_time = ?
          WHERE id = ?`,
     b.seq ?? cur.seq, b.scene ?? cur.scene, b.dialogue ?? cur.dialogue, b.camera ?? cur.camera,
     b.duration ?? cur.duration,
+    b.ratio === undefined ? cur.ratio : b.ratio,
     b.characterIds === undefined ? cur.character_ids : JSON.stringify(b.characterIds),
     b.styleId === undefined ? cur.style_id : b.styleId,
     b.imageUrl === undefined ? cur.image_url : b.imageUrl,
@@ -550,10 +557,11 @@ app.get('/api/models', wrap(async (req, res) => {
   }
 
   const decorate = (list) => {
+    // 注意：不要用网关 403 里的 models=[...] 做硬过滤——那个列表是按端点/权限组给出的，
+    // 与 /video、/images/generations 的实际权限并不一致（实测 agnes-video-2.5 / image-2.5-flash 均可用）。
     const acl = videoMod.getAcl();
-    const usingOwnProvider = !!override.providerId || !!req.query.base_url;
-    const allowed = (acl && !usingOwnProvider) ? list.filter((m) => acl.includes(m)) : list;
-    const blocked = (acl && !usingOwnProvider) ? list.filter((m) => !acl.includes(m)) : [];
+    const allowed = list;
+    const blocked = acl ? list.filter((m) => !acl.includes(m)) : [];
     return {
       list: allowed, blocked,
       groups: {
@@ -585,6 +593,31 @@ app.get('/api/models', wrap(async (req, res) => {
   } catch (e) {
     ok(res, { list: [], error: `获取模型列表失败：${e.message}` });
   }
+}));
+
+/* ---------------- 模型可用性探测（不消耗生成额度） ---------------- */
+const probeCache = new Map();
+app.post('/api/models/probe', wrap(async (req, res) => {
+  const { models = [], kind = 'text', purpose } = req.body || {};
+  let target;
+  try {
+    target = ai.resolveTarget(purpose || (kind === 'image' ? 'image_gen' : kind === 'video' ? 'video' : 'thinking'), {}, {
+      providerId: req.body?.providerId, baseURL: req.body?.base_url, apiKey: req.body?.api_key,
+    });
+  } catch (e) { return fail(res, e.message); }
+  if (target.custom) return ok(res, { results: {}, custom: true });
+
+  const results = {};
+  for (const m of models) {
+    const key = `${kind}:${target.baseURL}:${m}`;
+    const hit = probeCache.get(key);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) { results[m] = hit.value; continue; }
+    const value = await endpointMod.probeModel({ kind, baseURL: target.baseURL, apiKey: target.apiKey, model: m });
+    probeCache.set(key, { at: Date.now(), value });
+    results[m] = value;
+    if (/429/.test(value.detail || '')) await new Promise((r) => setTimeout(r, 1500));
+  }
+  ok(res, { results });
 }));
 
 /* ---------------- 多版本择优 ---------------- */
@@ -628,7 +661,7 @@ app.post('/api/shots/:id/video', wrap(async (req, res) => {
       prompt: shotPromptFor(shot, b.prompt),
       image: dataUrl,
       duration: Number(b.duration) || Math.min(10, Math.max(5, Math.round(Number(shot.duration) || 5))),
-      ratio: b.ratio,
+      ratio: b.ratio || shot.ratio || undefined,
     });
     q.run('UPDATE shot SET video_url = ?, status = ?, error = NULL, update_time = ? WHERE id = ?', out.url, 'done', now(), shot.id);
     videoMod.recordMedia({

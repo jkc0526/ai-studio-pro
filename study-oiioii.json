@@ -1,0 +1,348 @@
+{
+  "title": "OiiOii.ai - 为你而生的 AI 动画 Agent 团队",
+  "url": "https://www.oiioii.ai/home",
+  "regions": [
+    {
+      "tag": "nav",
+      "cls": "_side-nav_139h9_1",
+      "x": 0,
+      "y": 48,
+      "w": 200,
+      "h": 952,
+      "txt": "新建项目 Oii 工作室 Oii TV 资产 技能 我的项目 Oii CLI is live!"
+    },
+    {
+      "tag": "section",
+      "cls": "_section_1xtgb_1",
+      "x": 12,
+      "y": 388,
+      "w": 175,
+      "h": 500,
+      "txt": "我的项目"
+    },
+    {
+      "tag": "main",
+      "cls": "_main_1o6v8_166 _main-studio_1o6v8_209",
+      "x": 200,
+      "y": 48,
+      "w": 1385,
+      "h": 952,
+      "txt": "个人/自媒体 短漫剧 MV 游戏 电商 广告 个人/自媒体 短漫剧 MV 游戏 电商 广告 简体中文 免费注册 / 登录 登录立即体验 免费盒饭（积分） 每日登"
+    },
+    {
+      "tag": "header",
+      "cls": "_top-bar_1o6v8_171",
+      "x": 200,
+      "y": 48,
+      "w": 1400,
+      "h": 60,
+      "txt": "个人/自媒体 短漫剧 MV 游戏 电商 广告 个人/自媒体 短漫剧 MV 游戏 电商 广告 简体中文 免费注册 / 登录 登录立即体验 免费盒饭（积分） 每日登"
+    },
+    {
+      "tag": "nav",
+      "cls": "_industry-tabs_1o6v8_394",
+      "x": 221,
+      "y": 69,
+      "w": 432,
+      "h": 39,
+      "txt": "个人/自媒体 短漫剧 MV 游戏 电商 广告 个人/自媒体 短漫剧 MV 游戏 电商 广告"
+    },
+    {
+      "tag": "section",
+      "cls": "_card_nlue6_1",
+      "x": 1240,
+      "y": 56,
+      "w": 336,
+      "h": 328,
+      "txt": "登录立即体验 免费盒饭（积分） 每日登录即领 7 个 AI agents 助你高效出片 170+ 个风格 创作不受限 少抽卡 超强分镜能力，更省心 ACG、短剧"
+    },
+    {
+      "tag": "section",
+      "cls": "_wrap_hxeg7_6",
+      "x": 493,
+      "y": 318,
+      "w": 800,
+      "h": 240,
+      "txt": "描述你的创作需求，也可以试试使用 Skill 技能、模板 技能 Agent 风格 资产 模板 New"
+    },
+    {
+      "tag": "div",
+      "cls": "_prerender-toolbar-container_hxeg7_195",
+      "x": 496,
+      "y": 501,
+      "w": 794,
+      "h": 56,
+      "txt": "技能 Agent 风格 资产 模板 New"
+    },
+    {
+      "tag": "div",
+      "cls": "_prerender-toolbar-area_hxeg7_203",
+      "x": 508,
+      "y": 513,
+      "w": 770,
+      "h": 32,
+      "txt": "技能 Agent 风格 资产 模板 New"
+    },
+    {
+      "tag": "span",
+      "cls": "_prerender-toolbar-option_hxeg7_266  text-b4-medium",
+      "x": 589,
+      "y": 513,
+      "w": 93,
+      "h": 32,
+      "txt": "Agent"
+    },
+    {
+      "tag": "span",
+      "cls": "_prerender-toolbar-option_hxeg7_266  text-b4-medium",
+      "x": 682,
+      "y": 513,
+      "w": 67,
+      "h": 32,
+      "txt": "风格"
+    },
+    {
+      "tag": "div",
+      "cls": "_prerender-toolbar-fixed-left-end_hxeg7_228",
+      "x": 749,
+      "y": 513,
+      "w": 140,
+      "h": 32,
+      "txt": "资产 模板 New"
+    },
+    {
+      "tag": "span",
+      "cls": "_prerender-toolbar-option_hxeg7_266 text-b4-medium",
+      "x": 749,
+      "y": 513,
+      "w": 67,
+      "h": 32,
+      "txt": "资产"
+    },
+    {
+      "tag": "span",
+      "cls": "_prerender-toolbar-option_hxeg7_266 text-b4-medium",
+      "x": 816,
+      "y": 513,
+      "w": 73,
+      "h": 32,
+      "txt": "模板 New"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 493,
+      "y": 578,
+      "w": 154,
+      "h": 40,
+      "txt": "自由画布"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 654,
+      "y": 578,
+      "w": 154,
+      "h": 40,
+      "txt": "剧情故事创作"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 816,
+      "y": 578,
+      "w": 154,
+      "h": 40,
+      "txt": "爆款复刻"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 977,
+      "y": 578,
+      "w": 154,
+      "h": 40,
+      "txt": "故事板做视频"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 1139,
+      "y": 578,
+      "w": 154,
+      "h": 40,
+      "txt": "角色设计"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 549,
+      "y": 626,
+      "w": 154,
+      "h": 40,
+      "txt": "场景设计"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 711,
+      "y": 626,
+      "w": 154,
+      "h": 40,
+      "txt": "道具设计"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 873,
+      "y": 626,
+      "w": 154,
+      "h": 40,
+      "txt": "Oii Image 2.5 最新"
+    },
+    {
+      "tag": "button",
+      "cls": "hogi-tooltip-trigger _card_1au7n_6",
+      "x": 1034,
+      "y": 626,
+      "w": 154,
+      "h": 40,
+      "txt": "H3 Max Turbo 最新"
+    },
+    {
+      "tag": "section",
+      "cls": "_feed-section_1k1gk_1",
+      "x": 260,
+      "y": 785,
+      "w": 1265,
+      "h": 205,
+      "txt": "社媒爆款 上划查看更多 阿拉丁 归墟行动：巨鳌负山 普度众生 福特的造车流水线如何颠覆世界 崂山道士 全球首个动画创作Agent，希望帮助更多人实现自己的动画梦"
+    },
+    {
+      "tag": "button",
+      "cls": "_card_1hyix_73",
+      "x": 260,
+      "y": 817,
+      "w": 307,
+      "h": 199,
+      "txt": "阿拉丁"
+    },
+    {
+      "tag": "button",
+      "cls": "_card_1hyix_73",
+      "x": 579,
+      "y": 817,
+      "w": 307,
+      "h": 199,
+      "txt": "归墟行动：巨鳌负山"
+    },
+    {
+      "tag": "button",
+      "cls": "_card_1hyix_73",
+      "x": 899,
+      "y": 817,
+      "w": 307,
+      "h": 199,
+      "txt": "普度众生"
+    },
+    {
+      "tag": "button",
+      "cls": "_card_1hyix_73",
+      "x": 1218,
+      "y": 817,
+      "w": 307,
+      "h": 199,
+      "txt": "福特的造车流水线如何颠覆世界"
+    },
+    {
+      "tag": "button",
+      "cls": "_card_1hyix_73",
+      "x": 260,
+      "y": 1044,
+      "w": 307,
+      "h": 199,
+      "txt": "崂山道士"
+    },
+    {
+      "tag": "footer",
+      "cls": "_footer_14ynx_1",
+      "x": 260,
+      "y": 6767,
+      "w": 1265,
+      "h": 333,
+      "txt": "全球首个动画创作Agent，希望帮助更多人实现自己的动画梦。每一段想象力，都值得被看见。 Imagination, now displaying. © 2025"
+    },
+    {
+      "tag": "section",
+      "cls": "_footer-explore_14ynx_120",
+      "x": 1304,
+      "y": 6847,
+      "w": 141,
+      "h": 173,
+      "txt": "产品介绍 AI 动画画布 价格方案 创作流程 常见问题 博客"
+    },
+    {
+      "tag": "nav",
+      "cls": "_footer-section_14ynx_64 _footer-explore-links_14ynx_147",
+      "x": 1304,
+      "y": 6882,
+      "w": 141,
+      "h": 138,
+      "txt": "AI 动画画布 价格方案 创作流程 常见问题 博客"
+    }
+  ],
+  "navItems": [
+    "个人/自媒体 短漫剧 MV 游戏 电商 广告 个人/自媒体 ",
+    "个人/自媒体",
+    "短漫剧",
+    "MV",
+    "游戏",
+    "电商",
+    "广告",
+    "个人/自媒体",
+    "短漫剧",
+    "MV",
+    "游戏",
+    "电商",
+    "广告",
+    "简体中文",
+    "免费注册 / 登录",
+    "立即注册 / 登录",
+    "描述你的创作需求，也可以试试使用 Skill 技能、模板"
+  ],
+  "buttons": [
+    "新建项目",
+    "Oii 工作室",
+    "Oii TV",
+    "资产",
+    "技能",
+    "我的项目",
+    "Oii CLI is live!",
+    "个人/自媒体",
+    "短漫剧",
+    "MV",
+    "游戏",
+    "电商",
+    "广告",
+    "简体中文",
+    "免费注册 / 登录",
+    "立即注册 / 登录",
+    "自由画布",
+    "剧情故事创作",
+    "爆款复刻",
+    "故事板做视频",
+    "角色设计",
+    "场景设计",
+    "道具设计",
+    "Oii Image 2.5 最新",
+    "H3 Max Turbo 最新",
+    "阿拉丁",
+    "归墟行动：巨鳌负山",
+    "普度众生",
+    "福特的造车流水线如何颠覆世界",
+    "崂山道士"
+  ],
+  "inputs": [],
+  "images": 112,
+  "bodyText": "🎉 秒速生成丨Fal MiniMax H3 Max 专属积分・限时买一赠一\n立即抢购\n新建项目\nOii 工作室\nOii TV\n资产\n技能\n我的项目\nOii CLI is live!\n个人/自媒体\n短漫剧\nMV\n游戏\n电商\n广告\n个人/自媒体\n短漫剧\nMV\n游戏\n电商\n广告\n简体中文\n免费注册 / 登录\n登录立即体验\n免费盒饭（积分）\n每日登录即领\n7 个 AI agents\n助你高效出片\n170+ 个风格\n创作不受限\n少抽卡\n超强分镜能力，更省心\nACG、短剧适用\n深度适配剧情创作\n立即注册 / 登录\nOiiOii 个人/自媒体 Agent\n双击左键\n，进入自由画布\n描述你的创作需求，也可以试试使用 Skill 技能、模板\n技能\nAgent\n风格\n资产\n模板\nNew\n自由画布\n剧情故事创作\n爆款复刻\n故事板做视频\n角色设计\n场景设计\n道具设计\nOii Image 2.5\n最新\nH3 Max Turbo\n最新\n社媒爆款\n上划查看更多\n阿拉丁\n归墟行动：巨鳌负山\n普度众生\n福特的造车流水线如何颠覆世界\n崂山道士\n全球首个动画创作Agent，希望帮助更多人实现自己的动画梦。每一段想象力，都值得被看见。\nImagination, now displaying.\n© 2025 OiiOii. All rights reserved.\n平台协议\n隐私声明\n用户协议\n联系我们\nSupport: contact@hogi.ai\n社媒平台\nX\nYouTube\nInstagram\nReddit\n产品介绍\nAI 动画画布\n价格方案\n创作流程\n常见问题\n博客"
+}

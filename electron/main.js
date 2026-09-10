@@ -2,7 +2,6 @@ import { app, BrowserWindow, Menu, shell, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { startServer } from '../server/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..');
@@ -31,13 +30,15 @@ let serverInfo = null;
 async function boot() {
   const dataDir = resolveDataDir();
   process.env.WEAVE_DATA_DIR = dataDir;
-  const distDir = isPackaged ? path.join(APP_ROOT, 'dist') : path.join(APP_ROOT, 'dist');
-  process.env.WEAVE_DIST_DIR = distDir;
+  process.env.WEAVE_DIST_DIR = path.join(APP_ROOT, 'dist');
+  fs.mkdirSync(path.join(dataDir, 'outputs'), { recursive: true });
 
   try {
+    // 必须在设置好数据目录之后再加载服务端（db.js 在导入时就确定数据目录）
+    const { startServer } = await import('../server/index.js');
     serverInfo = await startServer({ port: Number(process.env.WEAVE_PORT) || 8787 });
   } catch (err) {
-    dialog.showErrorBox('WeaveCanvas 启动失败', `本地服务无法启动：${err.message}`);
+    dialog.showErrorBox('WeaveCanvas 启动失败', `本地服务无法启动：${err.stack || err.message}`);
     app.quit();
     return;
   }

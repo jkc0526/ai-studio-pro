@@ -110,6 +110,7 @@ function ensureColumn(table, column, ddl) {
 ensureColumn('ai_config', 'provider_id', 'provider_id TEXT');
 ensureColumn('ai_config', 'custom_api_id', 'custom_api_id TEXT');
 ensureColumn('ai_config', 'notes', 'notes TEXT');
+ensureColumn('shot', 'ratio', 'ratio TEXT');
 
 // 常见的第三方 / 自建网关预设（不含密钥，粘贴 Key 即可用）
 const PROVIDER_PRESETS = [

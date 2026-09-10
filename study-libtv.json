@@ -1,0 +1,134 @@
+{
+  "title": "LibTV - 专业视频创作工具",
+  "url": "https://www.liblib.tv/",
+  "regions": [
+    {
+      "tag": "aside",
+      "cls": "border-nt-border-neutral-l1 bg-nt-bg-body flex h-full w-full",
+      "x": 0,
+      "y": 64,
+      "w": 68,
+      "h": 936,
+      "txt": ""
+    },
+    {
+      "tag": "main",
+      "cls": "flex min-w-0 flex-1 flex-col",
+      "x": 68,
+      "y": 64,
+      "w": 1522,
+      "h": 3192,
+      "txt": "Blender 插件 积分超市 开通会员 限时 45 折 注册/登录 新建画布创作 Seedance 2.5 多参创作 Seedance 2.5 多参创作 音视"
+    },
+    {
+      "tag": "header",
+      "cls": "bg-bg-page text-fg-default h-(--libtv-header-height) relativ",
+      "x": 68,
+      "y": 64,
+      "w": 1522,
+      "h": 50,
+      "txt": "Blender 插件 积分超市 开通会员 限时 45 折 注册/登录"
+    },
+    {
+      "tag": "button",
+      "cls": "border-nt-border-neutral-l1 bg-[color-mix(in_srgb,var(--pane",
+      "x": 1088,
+      "y": 73,
+      "w": 124,
+      "h": 32,
+      "txt": "Blender 插件"
+    },
+    {
+      "tag": "button",
+      "cls": "border-nt-border-neutral-l1 bg-[color-mix(in_srgb,var(--pane",
+      "x": 1220,
+      "y": 73,
+      "w": 98,
+      "h": 32,
+      "txt": "积分超市"
+    },
+    {
+      "tag": "button",
+      "cls": "border-nt-border-neutral-l1 bg-[color-mix(in_srgb,var(--pane",
+      "x": 1326,
+      "y": 73,
+      "w": 159,
+      "h": 32,
+      "txt": "开通会员 限时 45 折"
+    },
+    {
+      "tag": "section",
+      "cls": "b768:h-[200px] relative w-full overflow-hidden",
+      "x": 129,
+      "y": 313,
+      "w": 1400,
+      "h": 200,
+      "txt": "新建画布创作 Seedance 2.5 多参创作 Seedance 2.5 多参创作 音视频直出30s Lib Image 2.5 Lib Image 2.5 "
+    },
+    {
+      "tag": "section",
+      "cls": "flex w-full flex-col gap-3",
+      "x": 129,
+      "y": 537,
+      "w": 1400,
+      "h": 196,
+      "txt": "LibTV Agent 查看全部 skills POP MV 音乐MV 是枝裕和电影美学 专业影视 真人感美妆UGC产品测评 商业广告"
+    },
+    {
+      "tag": "header",
+      "cls": "flex h-8 items-center justify-between pl-2",
+      "x": 129,
+      "y": 537,
+      "w": 1400,
+      "h": 32,
+      "txt": "LibTV Agent 查看全部 skills"
+    }
+  ],
+  "navItems": [
+    "活动剩余 4 天 21 时 28 分 34 秒",
+    "Blender 插件",
+    "积分超市",
+    "开通会员 限时 45 折",
+    "注册/登录",
+    "查看全部 skills"
+  ],
+  "buttons": [
+    "Blender 插件",
+    "积分超市",
+    "开通会员 限时 45 折",
+    "注册/登录",
+    "新建画布创作",
+    "片段重拍 片段重拍 精准修改视频片段",
+    "查看全部 skills",
+    "POP MV 音乐MV",
+    "是枝裕和电影美学 专业影视",
+    "真人感美妆UGC产品测评 商业广告",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程",
+    "查看创作过程"
+  ],
+  "inputs": [],
+  "images": 88,
+  "bodyText": "活动剩余\n4 天 21 时 28 分 34 秒\n💥 Seedance 2.5 720P 年会员生成限时5折起，低至0.39 元/秒｜年会员最低 4.5 折\n限时抢购\nBlender 插件\n积分超市\n开通会员\n限时 45 折\n注册/登录\n新建画布创作\nSeedance 2.5\n多参创作\nSeedance 2.5\n多参创作\n音视频直出30s\nLib Image 2.5\nLib Image 2.5\n精准生成与编辑，复杂指令稳定还原\nMinimax H3 Max\n极速生成\nMinimax H3 Max\n极速生成\n后训练极速视频生成\n导演台\n独家\n导演台\n独家\n3D 虚拟场景，精准控制空间\n逐帧拉片\n独家\n逐帧拉片\n独家\n传视频，逐帧拉片快捷参考\n片段重拍\n片段重拍\n精准修改视频片段\nLibTV Agent\n查看全部 skills\nPOP MV\n音乐MV\n是枝裕和电影美学\n专业影视\n真人感美妆UGC产品测评\n商业广告\nTV Show\n全部\n一场戏的诞生\n无畏契约觉醒计划\n精选画布\n专业影视\n短剧漫剧\n商业广告\n动漫游戏\n教育生活\nTV工具箱\n19\nyoungzkwanna\n水中嬉戏\n查看创作过程\n45\n昔年\n《小人物的｜北渡》\n查看创作过程\n19\nmakow\n两个影子的故事｜《Just Tango On》\n查看创作过程\n29\n羊不画大饼\n启灵\n查看创作过程\n182\nYOUNG\n《火了之后》\n查看创作过程\n731\n牛斗\n带来光明之人-路西法\n查看创作过程\n419\nWhitelang\n无尽蝉鸣的盛夏\n查看创作过程\n88\n阿伟AIGC\n异星拾荒指南 第十集\n查看创作过程\n218\n一支宇宙\n获奖作品《凝视》\n查看创作过程\n212\nAi淇水汤汤\n一场风雨起，万里江湖未！\n查看创作过程\n314\nJunwei\nAI真人短剧 《无常错》\n查看创作过程\n67\n异星拾荒\n异星拾荒指南第13集\n查看创作过程\n77\n张mark\n原创AI剧集《山海经·太古来客》序章\n查看创作过程\n459\n牛铁柱\n夏日记\n查看创作过程\n70\n自热包\nAIGC 原创短篇 |《谁见她消逝》\n查看创作过程\n1.5k\n布知布觉\n智能穿戴产品 TVC 尝试｜高级感\n查看创作过程\n921\n白马少年\n武松\n查看创作过程\n332\nQiuson\nSeedance2.5短片坠星——DROPFALL EP1\n查看创作过程\n158\nZeroJ\n万物生变 | EP02：末日开端\n查看创作过程\n864\nDave\n《iPhone air》极简纯净风产品展示\n查看创作过程\n103\n蓝喵\n胡来万事屋\n查看创作过程\n95\nJcy樂多\n国风武侠《江湖》\n查看创作过程\n7\nyoungzkwanna\n喝掉阳光\n查看创作过程\n14\n刹那\n天不语\n查看创作过程"
+}

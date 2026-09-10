@@ -336,4 +336,30 @@ export async function execute({ spec, apiKey, kind, retry429 = true }) {
   throw new Error(`任务轮询超时（${polls} 次，任务号 ${id}）`);
 }
 
+/* ---------------- 可用性探测 ----------------
+   用「故意缺少必填参数」的请求判断模型是否有权限：
+   能访问 → 返回 400 prompt is required；无权限 → 403 / 503 model_not_found。不消耗生成额度。 */
+export async function probeModel({ kind, baseURL, apiKey, model, protocol = 'openai' }) {
+  const base = trimSlash(baseURL);
+  const url = kind === 'video' ? `${base}/video/generations`
+    : kind === 'image' ? `${base}/images/generations`
+      : `${base}/chat/completions`;
+  const body = kind === 'text'
+    ? { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }
+    : { model };
+  try {
+    const res = await fetchJson(url, { method: 'POST', body, apiKey });
+    const text = (res.text || '').replace(/\s+/g, ' ');
+    if (res.status === 429) return { state: 'limited', detail: '限流，稍后再试' };
+    if (res.status === 200) return { state: 'ok', detail: '可用' };
+    if (res.status === 400 && /prompt is required|messages|required/i.test(text)) return { state: 'ok', detail: '可用' };
+    if (/can only access models/i.test(text)) return { state: 'blocked', detail: '账号无此模型权限' };
+    if (/model_not_found|No available channel/i.test(text)) return { state: 'blocked', detail: '该模型无可用通道' };
+    if (res.status === 401 || res.status === 403) return { state: 'blocked', detail: `鉴权失败（${res.status}）` };
+    return { state: 'error', detail: `HTTP ${res.status}：${text.slice(0, 120)}` };
+  } catch (e) {
+    return { state: 'error', detail: e.message };
+  }
+}
+
 export { digText, digAnyId };

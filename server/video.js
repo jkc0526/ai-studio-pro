@@ -31,7 +31,7 @@ export function setAcl(list) {
 
 export function modelKind(id) {
   if (/video|wan|kling|seedance|sora|veo/i.test(id)) return 'video';
-  if (/image|dall|flux|sd|seedream|mj|midjourney|nano.?banana/i.test(id)) return 'image';
+  if (/image|dall-?e|flux|seedream|midjourney|nano.?banana|stable-?diffusion/i.test(id)) return 'image';
   return 'text';
 }
 

@@ -61,7 +61,8 @@ export const api = {
   listStyles: () => json('/api/styles'),
   createStyle: (body) => json('/api/styles', { method: 'POST', body }),
   deleteStyle: (id) => json(`/api/styles/${id}`, { method: 'DELETE' }),
-  listModels: () => json('/api/models'),
+  listModels: (qs) => json('/api/models' + (qs ? `?${qs}` : '')),
+  probeModels: (body) => json('/api/models/probe', { method: 'POST', body }),
 
   // 供应商与自定义接口
   protocols: () => json('/api/protocols'),

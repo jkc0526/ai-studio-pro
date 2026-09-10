@@ -260,16 +260,41 @@ export default function SettingsModal({ open, onClose, notify }) {
                 {tr && <div className={tr.ok ? 'err-box ok' : 'err-box'}>{tr.ok ? '✓ ' : '✕ '}{tr.text}</div>}
                 {modelList?.purpose === p.key && (
                   <div className="model-picker">
-                    <div className="hint">
-                      共 {modelList.list?.length || 0} 个{modelList.blocked?.length ? `，另有 ${modelList.blocked.length} 个受账号权限限制` : ''}（点选即填入）
-                      {modelList.source ? ` · 来源：${modelList.source}` : ''}
+                    <div className="snippet-actions">
+                      <button className="tiny" disabled={busy === `probe:${p.key}`}
+                        onClick={async () => {
+                          setBusy(`probe:${p.key}`);
+                          try {
+                            const kind = p.key === 'image_gen' ? 'image' : p.key === 'video' ? 'video' : 'text';
+                            const r = await api.probeModels({ kind, purpose: p.key, models: modelList.list || [] });
+                            setModelList((m) => ({ ...m, probe: r.results || {} }));
+                            const ok = Object.values(r.results || {}).filter((x) => x.state === 'ok').length;
+                            notify(`检测完成：${ok} 个可用`);
+                          } catch (e) { notify(e.message, true); } finally { setBusy(''); }
+                        }}>
+                        {busy === `probe:${p.key}` ? '检测中…' : '检测可用性（不消耗额度）'}
+                      </button>
+                      <span className="hint">
+                        共 {modelList.list?.length || 0} 个{modelList.blocked?.length ? ` · 网关标注受限 ${modelList.blocked.length} 个` : ''}
+                        {modelList.source ? ` · 来源：${modelList.source}` : ''}
+                      </span>
                     </div>
                     <div className="model-chips">
-                      {(modelList.list || []).map((m) => (
-                        <button key={m} className={`chip ${f.model_id === m ? 'on' : ''}`} onClick={() => patch(p.key, { model_id: m })}>{m}</button>
-                      ))}
+                      {(modelList.list || []).map((m) => {
+                        const pr = modelList.probe?.[m];
+                        const mark = pr ? (pr.state === 'ok' ? '✓' : pr.state === 'limited' ? '⏳' : '✕') : '';
+                        return (
+                          <button key={m} className={`chip ${f.model_id === m ? 'on' : ''}`} title={pr?.detail || ''}
+                            onClick={() => patch(p.key, { model_id: m })}>
+                            {mark && <b style={{ color: pr.state === 'ok' ? 'var(--ok)' : pr.state === 'limited' ? 'var(--warn)' : 'var(--err)' }}>{mark} </b>}
+                            {m}
+                          </button>
+                        );
+                      })}
                     </div>
-                    {!!modelList.blocked?.length && <div className="hint">受限：{modelList.blocked.join('、')}</div>}
+                    {!!modelList.blocked?.length && (
+                      <div className="hint">网关 403 中提示受限：{modelList.blocked.join('、')}（注意：该列表按端点给出，未必准确，以「检测可用性」结果为准）</div>
+                    )}
                   </div>
                 )}
               </div>

@@ -22,6 +22,8 @@ export default function StoryboardView() {
   const [busy, setBusy] = useState('');
   const [variantsMap, setVariantsMap] = useState({});
   const [movie, setMovie] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [videoOpt, setVideoOpt] = useState({ duration: 5, ratio: '9:16' });
   const timer = useRef(null);
 
   const reload = useCallback(async () => {
@@ -101,15 +103,23 @@ export default function StoryboardView() {
 
   const genVideo = async (shot) => {
     setShots((list) => list.map((s) => (s.id === shot.id ? { ...s, status: 'video', error: null } : s)));
-    notify(`镜头 ${shot.seq} 开始图生视频，约 1-3 分钟…`);
+    notify(`镜头 ${shot.seq} 开始图生视频（${videoOpt.duration}s / ${videoOpt.ratio}），约 1-3 分钟…`);
     try {
-      const r = await api.shotVideo(shot.id, { modelId: videoModel || undefined });
+      const r = await api.shotVideo(shot.id, {
+        modelId: videoModel || undefined, duration: videoOpt.duration, ratio: videoOpt.ratio,
+      });
       setShots((list) => list.map((s) => (s.id === shot.id ? { ...s, video_url: r.video_url, status: 'done', error: null } : s)));
       notify(`镜头 ${shot.seq} 视频已生成`);
     } catch (e) {
       setShots((list) => list.map((s) => (s.id === shot.id ? { ...s, status: 'error', error: e.message } : s)));
       notify(`镜头 ${shot.seq} 视频失败：${e.message}`, true);
     }
+  };
+
+  const saveVideoOpt = (shot, patch) => {
+    setVideoOpt((v) => ({ ...v, ...patch }));
+    if (patch.duration && shot) patchShot(shot.id, { duration: patch.duration }, true);
+    if (patch.ratio && shot) patchShot(shot.id, { ratio: patch.ratio });
   };
 
   const selectVariant = async (shot, variantId) => {
@@ -152,6 +162,7 @@ export default function StoryboardView() {
 
   const progress = job && job.total ? Math.round(((job.done + job.failed) / job.total) * 100) : 0;
   const noImage = shots.filter((s) => !s.image_url).length;
+  const selected = shots.find((s) => s.id === selectedId) || null;
 
   return (
     <>
@@ -172,6 +183,12 @@ export default function StoryboardView() {
         </select>
         <select value={variants} onChange={(e) => setVariants(Number(e.target.value))} style={{ width: 110 }} title="每次生成的版本数">
           {[1, 2, 4].map((n) => <option key={n} value={n}>每镜 {n} 版</option>)}
+        </select>
+        <select value={videoOpt.duration} onChange={(e) => setVideoOpt({ ...videoOpt, duration: Number(e.target.value) })} style={{ width: 96 }} title="视频时长">
+          {[5, 8, 10].map((n) => <option key={n} value={n}>视频 {n}s</option>)}
+        </select>
+        <select value={videoOpt.ratio} onChange={(e) => setVideoOpt({ ...videoOpt, ratio: e.target.value })} style={{ width: 96 }} title="视频比例">
+          {['9:16', '16:9', '1:1'].map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <label className="checkline">
           <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} />
@@ -220,13 +237,14 @@ export default function StoryboardView() {
             <p className="hint">回到「剧本」页点「① 一键拆分镜」，AI 会把剧本拆成带画面描述、台词、镜头语言的镜头表。</p>
           </div>
         )}
-        <div className="board" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        <div className="board-wrap">
+          <div className="board" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {shots.map((shot) => {
             const cast = charsOf(shot);
             const vlist = variantsMap[shot.id] || [];
             return (
-              <div className={`shot ${shot.status || ''}`} key={shot.id}>
-                <div className="shot-head">
+              <div className={`shot ${shot.status || ''} ${selectedId === shot.id ? 'sel' : ''}`} key={shot.id}>
+                <div className="shot-head" onClick={() => setSelectedId(shot.id)} style={{ cursor: 'pointer' }}>
                   <span className="seq">{shot.seq}</span>
                   <span className={`badge ${shot.status === 'done' ? 'done' : shot.status === 'running' || shot.status === 'video' ? 'running' : shot.status === 'error' ? 'error' : ''}`}>
                     {STATUS[shot.status] || '待生成'}
@@ -236,7 +254,7 @@ export default function StoryboardView() {
                   <button className="ghost tiny" onClick={() => removeShot(shot.id)}>×</button>
                 </div>
 
-                <div className="shot-img">
+                <div className="shot-img" onClick={() => setSelectedId(shot.id)} style={{ cursor: 'pointer' }}>
                   {shot.video_url
                     ? <video src={shot.video_url} controls muted loop playsInline />
                     : shot.image_url
@@ -299,6 +317,107 @@ export default function StoryboardView() {
               </div>
             );
           })}
+          </div>
+
+          {selected && (
+            <aside className="inspector">
+              <div className="insp-head">
+                <b>镜头 {selected.seq}</b>
+                <span className={`badge ${selected.status === 'done' ? 'done' : selected.status === 'error' ? 'error' : selected.status ? 'running' : ''}`}>
+                  {STATUS[selected.status] || '待生成'}
+                </span>
+                <span className="spacer" />
+                <button className="ghost tiny" onClick={() => setSelectedId(null)}>×</button>
+              </div>
+
+              <div className="insp-preview">
+                {selected.video_url
+                  ? <video src={selected.video_url} controls muted loop playsInline />
+                  : selected.image_url ? <img src={selected.image_url} alt="" />
+                    : <span className="hint">尚未出图</span>}
+              </div>
+
+              <div className="insp-body">
+                <div className="field">
+                  <label className="field-label">画面描述</label>
+                  <textarea rows={4} value={selected.scene}
+                    onChange={(e) => patchShot(selected.id, { scene: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="field-label">台词 / 旁白</label>
+                  <textarea rows={2} value={selected.dialogue || ''}
+                    onChange={(e) => patchShot(selected.id, { dialogue: e.target.value })} />
+                </div>
+                <div className="row2">
+                  <div className="field">
+                    <label className="field-label">镜头语言</label>
+                    <input value={selected.camera || ''} onChange={(e) => patchShot(selected.id, { camera: e.target.value })} />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">时长(秒)</label>
+                    <input type="number" min="1" max="20" value={selected.duration || 5}
+                      onChange={(e) => patchShot(selected.id, { duration: Number(e.target.value) }, true)} />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label className="field-label">视频参数</label>
+                  <div className="row2">
+                    <select value={Number(selected.duration) || 5} onChange={(e) => saveVideoOpt(selected, { duration: Number(e.target.value) })}>
+                      {[5, 8, 10].map((n) => <option key={n} value={n}>{n} 秒</option>)}
+                    </select>
+                    <select value={selected.ratio || videoOpt.ratio} onChange={(e) => saveVideoOpt(selected, { ratio: e.target.value })}>
+                      {['9:16', '16:9', '1:1'].map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {!!characters.length && (
+                  <div className="field">
+                    <label className="field-label">出镜角色（决定形象注入）</label>
+                    <div className="chips">
+                      {characters.map((c) => (
+                        <button key={c.id} className={`chip ${charsOf(selected).includes(c.id) ? 'on' : ''}`}
+                          onClick={() => toggleChar(selected, c.id)}>{c.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(variantsMap[selected.id] || []).length > 1 && (
+                  <div className="field">
+                    <label className="field-label">版本（点选采用）</label>
+                    <div className="variant-strip" style={{ padding: 0 }}>
+                      {(variantsMap[selected.id] || []).map((v, i, arr) => (
+                        <button key={v.id} className={`variant ${selected.image_url === v.image_url ? 'on' : ''}`}
+                          onClick={() => selectVariant(selected, v.id)}>
+                          <img src={v.image_url} alt="" /><span>{arr.length - i}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selected.prompt_used && (
+                  <details className="adv">
+                    <summary>实际使用的提示词</summary>
+                    <div className="hint" style={{ whiteSpace: 'pre-wrap' }}>{selected.prompt_used}</div>
+                  </details>
+                )}
+
+                {selected.error && <div className="err-box">{selected.error}</div>}
+              </div>
+
+              <div className="insp-foot">
+                <button className="primary" onClick={() => genOne(selected)} disabled={selected.status === 'running' || selected.status === 'video'}>
+                  {selected.image_url ? '重生成图' : '生成分镜图'}
+                </button>
+                <button onClick={() => genVideo(selected)} disabled={!selected.image_url || selected.status === 'video' || selected.status === 'running'}>
+                  {selected.video_url ? '重生成视频' : '图生视频'}
+                </button>
+              </div>
+            </aside>
+          )}
         </div>
       </div>
     </>
