@@ -7,15 +7,21 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
+// 默认走国内镜像，避免直连 GitHub 下载 Electron 二进制时被 reset
+if (!process.env.ELECTRON_MIRROR) {
+  process.env.ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/';
+}
+
 const paths = await packager({
   dir: root,
-  out: path.join(root, 'release'),
+  // 按版本号输出，避免覆盖旧目录时触发系统的批量删除保护
+  out: path.join(root, 'release', `v${pkg.version}`),
   name: 'WeaveCanvas',
   appVersion: pkg.version,
   platform: 'win32',
   arch: 'x64',
   asar: false,
-  overwrite: true,
+  overwrite: false,
   prune: true,
   ignore: [
     /^\/data($|\/)/,
