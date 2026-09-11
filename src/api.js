@@ -64,6 +64,18 @@ export const api = {
   deleteCharacter: (id) => json(`/api/characters/${id}`, { method: 'DELETE' }),
   characterSheet: (id, body) => json(`/api/characters/${id}/sheet`, { method: 'POST', body }),
 
+  // 场景（资产链第二环）
+  listScenes: (scriptId) => json(`/api/scenes${scriptId ? `?scriptId=${scriptId}` : ''}`),
+  createScene: (body) => json('/api/scenes', { method: 'POST', body }),
+  updateScene: (id, body) => json(`/api/scenes/${id}`, { method: 'PUT', body }),
+  deleteScene: (id) => json(`/api/scenes/${id}`, { method: 'DELETE' }),
+  sceneImage: (id, body) => json(`/api/scenes/${id}/image`, { method: 'POST', body }),
+  extractScenes: (id, body) => json(`/api/scripts/${id}/extract-scenes`, { method: 'POST', body }),
+
+  // 生产线：脚本生成 / 提示词合成
+  generateScript: (id, body) => json(`/api/scripts/${id}/generate`, { method: 'POST', body }),
+  composeShots: (id, body) => json(`/api/scripts/${id}/compose`, { method: 'POST', body }),
+
   // 风格与模型
   listStyles: () => json('/api/styles'),
   createStyle: (body) => json('/api/styles', { method: 'POST', body }),

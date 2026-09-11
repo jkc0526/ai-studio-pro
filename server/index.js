@@ -360,9 +360,9 @@ app.post('/api/scripts/:id/shots', wrap((req, res) => {
   const b = req.body || {};
   const maxSeq = q.one('SELECT COALESCE(MAX(seq),0) m FROM shot WHERE script_id = ?', req.params.id)?.m || 0;
   const id = uid('sh');
-  q.run('INSERT INTO shot (id, script_id, seq, scene, dialogue, camera, duration, character_ids, style_id, status, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+  q.run('INSERT INTO shot (id, script_id, seq, scene, dialogue, camera, duration, character_ids, scene_id, style_id, status, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
     id, req.params.id, b.seq || maxSeq + 1, b.scene || '', b.dialogue || '', b.camera || '',
-    Number(b.duration) || 5, JSON.stringify(b.characterIds || []), b.styleId || null, 'idle', now(), now());
+    Number(b.duration) || 5, JSON.stringify(b.characterIds || []), b.sceneId || null, b.styleId || null, 'idle', now(), now());
   ok(res, q.one('SELECT * FROM shot WHERE id = ?', id));
 }));
 
@@ -371,12 +371,13 @@ app.put('/api/shots/:id', wrap((req, res) => {
   if (!cur) return fail(res, '镜头不存在', 404);
   const b = req.body || {};
   q.run(`UPDATE shot SET seq = ?, scene = ?, dialogue = ?, camera = ?, duration = ?, ratio = ?,
-         character_ids = ?, style_id = ?, image_url = ?, video_url = ?, status = ?, error = ?, update_time = ?
+         character_ids = ?, scene_id = ?, style_id = ?, image_url = ?, video_url = ?, status = ?, error = ?, update_time = ?
          WHERE id = ?`,
     b.seq ?? cur.seq, b.scene ?? cur.scene, b.dialogue ?? cur.dialogue, b.camera ?? cur.camera,
     b.duration ?? cur.duration,
     b.ratio === undefined ? cur.ratio : b.ratio,
     b.characterIds === undefined ? cur.character_ids : JSON.stringify(b.characterIds),
+    b.sceneId === undefined ? cur.scene_id : b.sceneId,
     b.styleId === undefined ? cur.style_id : b.styleId,
     b.imageUrl === undefined ? cur.image_url : b.imageUrl,
     b.videoUrl === undefined ? cur.video_url : b.videoUrl,
@@ -402,10 +403,12 @@ app.post('/api/scripts/:id/split', wrap(async (req, res) => {
   const cfg = needCfg('thinking');
   const b = req.body || {};
   const characters = q.all('SELECT * FROM character');
+  // 场景档案：优先取本剧本场景，兼容旧数据（全局场景）
+  const scenes = q.all('SELECT * FROM scene WHERE script_id = ? OR script_id IS NULL', script.id);
   const style = b.styleId ? q.one('SELECT * FROM style_preset WHERE id = ?', b.styleId) : null;
 
   const { shots, model, salvaged, truncated } = await pipeline.splitScript({
-    script, characters, style, cfg, count: Number(b.count) || 6, model: b.modelId,
+    script, characters, scenes, style, cfg, count: Number(b.count) || 6, model: b.modelId,
   });
   const mode = b.mode === 'append' ? 'append' : 'replace';
   let deleted = 0;
@@ -422,9 +425,9 @@ app.post('/api/scripts/:id/split', wrap(async (req, res) => {
     ? (q.one('SELECT COALESCE(MAX(seq),0) m FROM shot WHERE script_id = ?', script.id)?.m || 0)
     : 0;
   for (const s of shots) {
-    q.run('INSERT INTO shot (id, script_id, seq, scene, dialogue, camera, duration, character_ids, style_id, status, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    q.run('INSERT INTO shot (id, script_id, seq, scene, dialogue, camera, duration, character_ids, scene_id, style_id, status, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
       uid('sh'), script.id, base + s.seq, s.scene, s.dialogue, s.camera, s.duration, s.character_ids,
-      b.styleId || script.style_id || null, 'idle', now(), now());
+      s.scene_id || null, b.styleId || script.style_id || null, 'idle', now(), now());
   }
   if (mode === 'append') {
     // 追加后按当前顺序重排，避免出现重复 seq
@@ -487,8 +490,10 @@ app.post('/api/scripts/:id/compose', wrap(async (req, res) => {
   const style = q.one('SELECT * FROM style_preset WHERE id = ?', script.style_id) || null;
   const characters = q.all('SELECT * FROM character');
   const castByName = Object.fromEntries(characters.map((c) => [c.name, c]));
+  const allScenes = q.all('SELECT * FROM scene WHERE script_id = ? OR script_id IS NULL', script.id);
+  const sceneById = Object.fromEntries(allScenes.map((s) => [s.id, s]));
 
-  const system = '你是资深 AI 漫剧绘图提示词专家。把用户提供的剧本背景与分镜信息，重组成一条结构完整、可直接用于 AI 图像生成的最终提示词。要求：\n1. 只输出提示词正文，不要解释、不要编号、不要 Markdown\n2. 按"主体+动作+表情 → 环境/背景 → 光影/色调 → 镜头景别与角度 → 画质"组织\n3. 融合角色形象设定，确保同角色跨镜头一致\n4. 中文，50-120 字，末尾加"高清，构图完整，无文字水印"';
+  const system = '你是资深 AI 漫剧绘图提示词专家。把用户提供的剧本背景与分镜信息，重组成一条结构完整、可直接用于 AI 图像生成的最终提示词。要求：\n1. 只输出提示词正文，不要解释、不要编号、不要 Markdown\n2. 按"主体+动作+表情 → 环境/背景 → 光影/色调 → 镜头景别与角度 → 画质"组织\n3. 融合角色形象设定，确保同角色跨镜头一致\n4. 融合场景设定（环境/光影/氛围），确保同一场景跨镜头一致\n5. 中文，50-120 字，末尾加"高清，构图完整，无文字水印"';
 
   const composed = [];
   for (const s of shots) {
@@ -497,12 +502,17 @@ app.post('/api/scripts/:id/compose', wrap(async (req, res) => {
       .filter(Boolean)
       .map((c) => pipeline.charText(c))
       .join('；');
+    const sc = s.scene_id ? sceneById[s.scene_id] : null;
+    const sceneText = sc
+      ? [sc.name, sc.env, sc.lighting && `光影：${sc.lighting}`, sc.atmosphere && `氛围：${sc.atmosphere}`].filter(Boolean).join('，')
+      : '';
     const user = [
       script.title && `【剧本】《${script.title}》`,
       script.outline && `【大纲】${script.outline}`,
       style?.prompt_prefix && `【画面风格】${style.prompt_prefix}`,
       `【本镜头】画面：${s.scene || ''}｜对白：${s.dialogue || ''}｜运镜：${s.camera || ''}`,
       castText && `【出镜角色形象】${castText}`,
+      sceneText && `【所在场景设定】${sceneText}`,
     ].filter(Boolean).join('\n');
     const r = await callLLM(cfg, { model: b.modelId, system, user });
     q.run('UPDATE shot SET prompt_used = ?, update_time = ? WHERE id = ?', r.text, now(), s.id);
@@ -545,6 +555,67 @@ app.post('/api/characters/:id/sheet', wrap(async (req, res) => {
   const cfg = needCfg('image_gen');
   const out = await pipeline.generateCharacterSheet({
     character, styleId: req.body?.styleId || null, imageCfg: cfg,
+    model: req.body?.modelId, size: req.body?.size,
+  });
+  ok(res, out);
+}));
+
+/* ---------------- 场景档案（资产链第二环） ---------------- */
+app.get('/api/scenes', wrap((req, res) => ok(res,
+  req.query.scriptId
+    ? q.all('SELECT * FROM scene WHERE script_id = ? OR script_id IS NULL ORDER BY create_time', req.query.scriptId)
+    : q.all('SELECT * FROM scene ORDER BY create_time'))));
+
+app.post('/api/scenes', wrap((req, res) => {
+  const b = req.body || {};
+  const id = uid('sc');
+  q.run('INSERT INTO scene (id, project_id, script_id, name, env, lighting, atmosphere, ref_image_url, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    id, projId(), b.scriptId || null, b.name || '新场景', b.env || '', b.lighting || '', b.atmosphere || '', b.refImageUrl || null, now(), now());
+  ok(res, q.one('SELECT * FROM scene WHERE id = ?', id));
+}));
+
+app.put('/api/scenes/:id', wrap((req, res) => {
+  const cur = q.one('SELECT * FROM scene WHERE id = ?', req.params.id);
+  if (!cur) return fail(res, '场景不存在', 404);
+  const b = req.body || {};
+  q.run('UPDATE scene SET name = ?, env = ?, lighting = ?, atmosphere = ?, ref_image_url = ?, update_time = ? WHERE id = ?',
+    b.name ?? cur.name, b.env ?? cur.env, b.lighting ?? cur.lighting, b.atmosphere ?? cur.atmosphere,
+    b.refImageUrl === undefined ? cur.ref_image_url : b.refImageUrl, now(), req.params.id);
+  ok(res, q.one('SELECT * FROM scene WHERE id = ?', req.params.id));
+}));
+
+app.delete('/api/scenes/:id', wrap((req, res) => {
+  q.run('DELETE FROM scene WHERE id = ?', req.params.id);
+  // 清理分镜上失效的场景引用
+  q.run('UPDATE shot SET scene_id = NULL WHERE scene_id = ?', req.params.id);
+  ok(res, { deleted: req.params.id });
+}));
+
+// 从剧本 AI 提取场景档案
+app.post('/api/scripts/:id/extract-scenes', wrap(async (req, res) => {
+  const script = q.one('SELECT * FROM script WHERE id = ?', req.params.id);
+  if (!script) return fail(res, '剧本不存在', 404);
+  const cfg = needCfg('thinking');
+  const { scenes, model } = await pipeline.extractScenes({ script, cfg, model: req.body?.modelId });
+  const created = [];
+  for (const s of scenes) {
+    if (q.one('SELECT id FROM scene WHERE name = ? AND (script_id = ? OR script_id IS NULL)', s.name, script.id)) continue;
+    const id = uid('sc');
+    q.run('INSERT INTO scene (id, project_id, script_id, name, env, lighting, atmosphere, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?)',
+      id, projId(), script.id, s.name, s.env, s.lighting, s.atmosphere, now(), now());
+    created.push(id);
+  }
+  const list = q.all('SELECT * FROM scene WHERE script_id = ? OR script_id IS NULL ORDER BY create_time', script.id);
+  ok(res, { model, created: created.length, skipped: scenes.length - created.length, scenes: list });
+}));
+
+// 场景概念图（锁定空间外观）
+app.post('/api/scenes/:id/image', wrap(async (req, res) => {
+  const scene = q.one('SELECT * FROM scene WHERE id = ?', req.params.id);
+  if (!scene) return fail(res, '场景不存在', 404);
+  const cfg = needCfg('image_gen');
+  const out = await pipeline.generateSceneImage({
+    scene, styleId: req.body?.styleId || null, imageCfg: cfg,
     model: req.body?.modelId, size: req.body?.size,
   });
   ok(res, out);

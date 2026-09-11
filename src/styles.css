@@ -601,3 +601,69 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 }
 .prod-shot-table .badge.done { background: rgba(16,185,129,.15); color: #10B981; }
 .prod-shot-table .badge.error { background: rgba(239,68,68,.15); color: #ef4444; }
+
+/* ============== 资产准备（人物 + 场景，资产链） ============== */
+.prod-assets .prod-card-head { display: flex; align-items: center; gap: 8px; }
+.prod-assets .prod-card-head .spacer { flex: 1; }
+.prod-assets .prod-card-head .pill { background: #2a2a30; color: #ccc; border-radius: 10px; padding: 1px 8px; font-size: 12px; }
+.prod-assets .prod-card-head button.ghost,
+.prod-assets .prod-asset-btn,
+.prod-assets .prod-add-btn {
+  background: #2a2a30; border: none; color: #ddd; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; font-size: 12px;
+}
+.prod-assets .prod-card-head button.ghost:hover:not(:disabled),
+.prod-assets .prod-asset-btn:hover:not(:disabled),
+.prod-assets .prod-add-btn:hover:not(:disabled) { background: #353540; }
+.prod-assets button:disabled { opacity: .4; cursor: not-allowed; }
+
+.prod-asset-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 14px 16px; }
+.prod-asset-sec { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.prod-asset-title {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  color: var(--text); font-weight: 500;
+}
+.prod-asset-title .hint { font-weight: 400; font-size: 11px; }
+.prod-asset-title .prod-add-btn { margin-left: auto; padding: 2px 10px; }
+.prod-asset-empty {
+  color: var(--muted); font-size: 12px; padding: 18px 12px; text-align: center;
+  border: 1px dashed var(--border); border-radius: 8px;
+}
+.prod-asset-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px;
+}
+.prod-asset-card {
+  background: #232328; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.prod-asset-thumb {
+  width: 100%; aspect-ratio: 1 / 1; background: #1a1a1f;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.prod-asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.prod-asset-ph { color: #555; font-size: 12px; }
+.prod-asset-meta { padding: 6px 8px 2px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.prod-asset-meta b { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prod-asset-meta small { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prod-asset-name {
+  background: transparent; border: none; border-bottom: 1px dashed transparent;
+  color: var(--text); font: inherit; font-size: 12px; font-weight: 600;
+  padding: 0; outline: none; width: 100%;
+}
+.prod-asset-name:focus { border-bottom-color: #2563EB; }
+.prod-asset-actions { display: flex; gap: 4px; padding: 4px 8px 8px; align-items: center; }
+.prod-asset-actions .prod-asset-btn { flex: 1; padding: 3px 6px; font-size: 11px; }
+.prod-asset-del { padding: 3px 8px !important; font-size: 13px !important; color: #ef4444 !important; }
+
+/* 分镜表：场景 / 人物引用列 */
+.col-ref { width: 120px; }
+.prod-shot-table select {
+  width: 100%; background: #232328; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); font-size: 12px; padding: 3px 4px; outline: none;
+}
+.prod-shot-table select:focus { border-color: #2563EB; }
+.prod-cast { display: flex; flex-wrap: wrap; gap: 3px; }
+.prod-cast-chip {
+  background: rgba(37,99,235,.15); color: #7ba3f5; border-radius: 8px;
+  padding: 1px 7px; font-size: 11px; white-space: nowrap;
+}

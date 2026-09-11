@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS character (
   outfit TEXT, personality TEXT, ref_image_url TEXT, sheet_image_url TEXT,
   create_time TEXT, update_time TEXT
 );
+CREATE TABLE IF NOT EXISTS scene (
+  id TEXT PRIMARY KEY, project_id TEXT, script_id TEXT, name TEXT, env TEXT,
+  lighting TEXT, atmosphere TEXT, ref_image_url TEXT,
+  create_time TEXT, update_time TEXT
+);
 CREATE TABLE IF NOT EXISTS style_preset (
   id TEXT PRIMARY KEY, name TEXT, prompt_prefix TEXT, negative_prompt TEXT,
   builtin INTEGER DEFAULT 0, create_time TEXT, update_time TEXT
@@ -111,6 +116,8 @@ ensureColumn('ai_config', 'provider_id', 'provider_id TEXT');
 ensureColumn('ai_config', 'custom_api_id', 'custom_api_id TEXT');
 ensureColumn('ai_config', 'notes', 'notes TEXT');
 ensureColumn('shot', 'ratio', 'ratio TEXT');
+// 分镜 → 场景引用（人物引用已有 character_ids）
+ensureColumn('shot', 'scene_id', 'scene_id TEXT');
 
 // 常见的第三方 / 自建网关预设（不含密钥，粘贴 Key 即可用）
 const PROVIDER_PRESETS = [

@@ -101,13 +101,23 @@ export function charText(c) {
   return bits.join('，');
 }
 
-export function composeShotPrompt({ shot, characters = [], style, extra = '' }) {
+export function composeShotPrompt({ shot, characters = [], style, sceneRef = null, extra = '' }) {
   const clean = (s) => String(s || '').trim().replace(/[，。；、,;.\s]+$/, '');
   const parts = [];
   if (style?.prompt_prefix) parts.push(clean(style.prompt_prefix));
   if (shot?.scene) parts.push(clean(shot.scene));
   const cast = characters.filter((c) => c && c.appearance);
   if (cast.length) parts.push(`角色形象保持一致：${cast.map(charText).join('；')}`);
+  // 场景设定（环境 / 光影 / 氛围）——资产链的第三环
+  if (sceneRef) {
+    const bits = [
+      sceneRef.name && `场景：${sceneRef.name}`,
+      sceneRef.env,
+      sceneRef.lighting && `光影：${sceneRef.lighting}`,
+      sceneRef.atmosphere && `氛围：${sceneRef.atmosphere}`,
+    ].filter(Boolean).map(clean);
+    if (bits.length) parts.push(bits.join('，'));
+  }
   if (shot?.camera) parts.push(clean(shot.camera));
   if (extra) parts.push(clean(extra));
   parts.push('画面高清，构图完整，无文字水印');
@@ -118,22 +128,27 @@ export function composeShotPrompt({ shot, characters = [], style, extra = '' }) 
 const SPLIT_SYSTEM = `你是资深 AI 漫剧分镜师。把用户给的剧本拆解成可直接用于 AI 绘图与视频生成的分镜表。
 严格要求：
 1. 只输出 JSON，不要任何解释文字或 markdown 代码块外的内容。
-2. JSON 结构：{"shots":[{"scene":"","dialogue":"","camera":"","duration":5,"characters":["角色名"]}]}
+2. JSON 结构：{"shots":[{"scene":"","dialogue":"","camera":"","duration":5,"characters":["角色名"],"sceneName":"场景名"}]}
 3. scene 为中文画面描述，包含人物动作、表情、环境、光影，40-90 字，必须能被 AI 直接画出来；不要出现"同上""继续"等指代。
 4. dialogue 为该镜头台词或旁白，没有就留空字符串。
 5. camera 为镜头语言，如"中景，略微俯视，缓慢推近"。
 6. duration 为镜头时长秒数，3-8 之间。
 7. characters 只填该镜头出镜的角色名，必须从用户提供的角色清单中选，没有出镜就留空数组。
-8. 镜头之间要有景别与角度变化，避免全部同一构图。`;
+8. sceneName 为该镜头所在场景名，必须从用户提供的场景清单中选；若无法对应则留空字符串。
+9. 镜头之间要有景别与角度变化，避免全部同一构图。`;
 
-export async function splitScript({ script, characters, style, cfg, count = 6, model }) {
+export async function splitScript({ script, characters, scenes = [], style, cfg, count = 6, model }) {
   const castList = characters.length
     ? characters.map((c) => `${c.name}${c.appearance ? `（${c.appearance}${c.outfit ? `，${c.outfit}` : ''}）` : ''}`).join('\n')
     : '（暂无角色档案）';
+  const sceneList = scenes.length
+    ? scenes.map((s) => `${s.name}${s.env ? `（${s.env}${s.lighting ? `，${s.lighting}` : ''}）` : ''}`).join('\n')
+    : '（暂无场景档案）';
   const user = [
     `【剧本标题】${script.title || '未命名'}`,
     script.outline ? `【故事梗概】${script.outline}` : '',
     `【可用角色】\n${castList}`,
+    `【可用场景】\n${sceneList}`,
     style?.prompt_prefix ? `【画面风格】${style.prompt_prefix}` : '',
     `【剧本正文】\n${script.content || ''}`,
     `请拆成 ${count} 个镜头，输出 JSON。`,
@@ -153,14 +168,17 @@ export async function splitScript({ script, characters, style, cfg, count = 6, m
   }
 
   const nameToId = new Map(characters.map((c) => [c.name, c.id]));
+  const sceneNameToId = new Map(scenes.map((s) => [s.name, s.id]));
   const rows = shots.map((s, i) => {
     const ids = asArray(s.characters).map((n) => nameToId.get(String(n).trim())).filter(Boolean);
+    const sceneId = s.sceneName ? (sceneNameToId.get(String(s.sceneName).trim()) || null) : null;
     return {
       scene: String(s.scene || '').trim(),
       dialogue: String(s.dialogue || '').trim(),
       camera: String(s.camera || '').trim(),
       duration: Number(s.duration) > 0 ? Number(s.duration) : 5,
       character_ids: JSON.stringify(ids),
+      scene_id: sceneId,
       seq: i + 1,
     };
   }).filter((s) => s.scene);
@@ -193,6 +211,31 @@ export async function extractCharacters({ script, cfg, model }) {
   return { characters: cleaned, model: used };
 }
 
+/* ---------------- 二·B：剧本 → 场景档案 ---------------- */
+const SCENE_SYSTEM = `你是漫剧美术指导。从剧本中提取主要场景（地点/环境），为每个场景写一份可复用的"场景锁定档案"，用于让 AI 在每一镜中画出同一个空间。
+要求：
+1. 只输出 JSON：{"scenes":[{"name":"","env":"","lighting":"","atmosphere":""}]}
+2. name 为场景简称，如"深夜办公室""金銮殿""雨夜街巷"。
+3. env 为环境锁定描述，包含：地点类型、空间结构、主要陈设与材质、色调，60-120 字，用固定的具体形容词便于复用。
+4. lighting 为光影特征，如"冷蓝荧幕光为主，顶部射灯形成硬边阴影"，20-50 字。
+5. atmosphere 为氛围情绪，如"压抑、紧张、孤独"，10-30 字。
+6. 最多 8 个场景，只提取反复出现或不重复的主要场景。`;
+
+export async function extractScenes({ script, cfg, model }) {
+  const user = `【剧本标题】${script.title || ''}\n【梗概】${script.outline || ''}\n【正文】\n${script.content || ''}\n\n请提取场景档案，输出 JSON。`;
+  const { data, raw, model: used } = await askJson(cfg, { system: SCENE_SYSTEM, user, model });
+  let list = data ? asArray(data.scenes || data) : [];
+  if (!list.length) list = extractObjects(raw).flatMap((o) => (Array.isArray(o.scenes) ? o.scenes : o.name && o.env ? [o] : []));
+  const cleaned = list.map((s) => ({
+    name: String(s.name || '').trim(),
+    env: String(s.env || '').trim(),
+    lighting: String(s.lighting || '').trim(),
+    atmosphere: String(s.atmosphere || '').trim(),
+  })).filter((s) => s.name);
+  if (!cleaned.length) throw new Error(`未能从剧本中识别出场景：${raw.slice(0, 200)}…`);
+  return { scenes: cleaned, model: used };
+}
+
 /* ---------------- 三：生图 ---------------- */
 const pickStyle = (styleId) => (styleId ? q.one('SELECT * FROM style_preset WHERE id = ?', styleId) : null);
 
@@ -202,16 +245,40 @@ function charListFor(shot, projectId) {
   return ids.map((id) => q.one('SELECT * FROM character WHERE id = ?', id)).filter(Boolean);
 }
 
+/** 取分镜引用的场景档案（资产链第三环） */
+function sceneFor(shot) {
+  if (!shot?.scene_id) return null;
+  return q.one('SELECT * FROM scene WHERE id = ?', shot.scene_id) || null;
+}
+
 export async function generateShotImage({ shot, styleId, imageCfg, extra = '', size = '1024x1536', model }) {
   const style = pickStyle(styleId ?? shot.style_id);
   const cast = charListFor(shot);
-  const prompt = composeShotPrompt({ shot, characters: cast, style, extra });
+  const sceneRef = sceneFor(shot);
+  const prompt = composeShotPrompt({ shot, characters: cast, style, sceneRef, extra });
   const r = await callImage(imageCfg, { model, prompt, size });
   q.run('UPDATE shot SET image_url = ?, prompt_used = ?, model_used = ?, status = ?, error = NULL, update_time = ? WHERE id = ?',
     r.url, prompt, r.model, 'done', now(), shot.id);
   q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
     uid('as'), shot.script_id, shot.id, r.url, 'image', prompt, r.model, now());
   return { image_url: r.url, prompt, model: r.model };
+}
+
+/** 场景概念图（锁定空间外观，供分镜引用） */
+export async function generateSceneImage({ scene, styleId, imageCfg, model, size = '1536x1024' }) {
+  const style = pickStyle(styleId);
+  const prompt = composeShotPrompt({
+    shot: {
+      scene: `场景概念设定稿：${scene.env || scene.name || ''}`,
+      camera: '广角环境全景，空镜无人，突出空间结构与陈设',
+    },
+    characters: [],
+    sceneRef: scene,
+    style,
+  });
+  const r = await callImage(imageCfg, { model, prompt, size });
+  q.run('UPDATE scene SET ref_image_url = ?, update_time = ? WHERE id = ?', r.url, now(), scene.id);
+  return { ref_image_url: r.url, prompt, model: r.model };
 }
 
 export async function generateCharacterSheet({ character, styleId, imageCfg, model, size = '1536x1024' }) {
