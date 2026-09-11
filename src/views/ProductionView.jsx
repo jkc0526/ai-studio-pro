@@ -17,8 +17,7 @@ export default function ProductionView() {
   }, [script?.id]);
 
   const [openGen, setOpenGen] = useState(false);
-  const [genPrompt, setGenPrompt] = useState('根据我上传的剧本生成一个完整的故事脚本');
-  const [refText, setRefText] = useState('');
+  const [genPrompt, setGenPrompt] = useState('根据我上传的剧本生成一个完整的故事脚本');  const [refText, setRefText] = useState('');
   const [genModel, setGenModel] = useState('');
   const [busy, setBusy] = useState(false);
   const [abortCtl, setAbortCtl] = useState(null);
@@ -81,6 +80,83 @@ export default function ProductionView() {
     }
   }, [script, genPrompt, refText, genModel, modelDefaults, form, updateScript, notify]);
 
+  /* ---- ② 分镜表（截图 4/7/8） ---- */
+  const [shots, setShots] = useState([]);
+  const [selectedShots, setSelectedShots] = useState(new Set());
+  const [shotBusy, setShotBusy] = useState(''); // '' | 'split' | 'image' | 'compose'
+  const [splitCount, setSplitCount] = useState(6);
+  const [imgModel, setImgModel] = useState('');
+
+  useEffect(() => {
+    if (!script) return;
+    api.listShots(script.id).then(setShots).catch(() => setShots([]));
+  }, [script?.id]);
+
+  const toggleShot = (id) => {
+    setSelectedShots((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelectedShots((prev) => (prev.size === shots.length ? new Set() : new Set(shots.map((s) => s.id))));
+  };
+  const patchShot = async (id, patch) => {
+    setShots((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    try { await api.updateShot(id, patch); } catch (e) { notify(`保存失败：${e.message}`, true); }
+  };
+
+  const splitShots = async () => {
+    if (!(form.content || '').trim()) { notify('剧本正文为空，先在脚本生成器里生成脚本', true); return; }
+    setShotBusy('split');
+    try {
+      const r = await api.splitShots(script.id, { count: splitCount, modelId: modelDefaults?.text || undefined });
+      setShots(r.shots || await api.listShots(script.id));
+      notify(`已拆分 ${r.created} 个镜头`);
+    } catch (e) { notify(`拆分失败：${e.message}`, true); }
+    finally { setShotBusy(''); }
+  };
+
+  const batchImages = async () => {
+    const ids = selectedShots.size ? [...selectedShots] : shots.map((s) => s.id);
+    if (!ids.length) { notify('没有可生成的镜头', true); return; }
+    setShotBusy('image');
+    try {
+      // 逐镜调用 /api/shots/:id/image（复用后端单镜出图，自动写回 image_url + prompt_used）
+      let done = 0;
+      for (const id of ids) {
+        try {
+          const r = await api.shotImage(id, { modelId: imgModel || undefined });
+          setShots((list) => list.map((s) => (s.id === id ? { ...s, image_url: r.image_url, status: 'done' } : s)));
+          done++;
+        } catch (e) { notify(`镜头出图失败：${e.message}`, true); }
+      }
+      notify(`批量出图完成 ${done}/${ids.length}`);
+    } finally { setShotBusy(''); }
+  };
+
+  const composePrompts = async () => {
+    const ids = selectedShots.size ? [...selectedShots] : shots.map((s) => s.id);
+    if (!ids.length) { notify('没有可合成的镜头', true); return; }
+    setShotBusy('compose');
+    try {
+      const res = await fetch(`/api/scripts/${script.id}/compose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shotIds: ids, modelId: modelDefaults?.text || undefined }),
+      });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.error || '合成失败');
+      const byId = Object.fromEntries((j.data?.shots || []).map((s) => [s.id, s.prompt]));
+      setShots((list) => list.map((s) => (byId[s.id] ? { ...s, prompt_used: byId[s.id] } : s)));
+      notify(`已合成 ${j.data?.composed} 条最终提示词`);
+    } catch (e) { notify(`合成失败：${e.message}`, true); }
+    finally { setShotBusy(''); }
+  };
+
+  const allSelected = shots.length > 0 && selectedShots.size === shots.length;
+
   if (!script) {
     return (
       <div className="view-body center">
@@ -140,6 +216,95 @@ export default function ProductionView() {
             <div className="hint">点击此处打开脚本生成器</div>
           </div>
         </div>
+      </div>
+
+      {/* ② 分镜表（截图 4/7/8）：15 行多列 + 全选 + 批量出图 + 合成提示词 */}
+      <div className="prod-card prod-shots">
+        <div className="prod-card-head">
+          <span className="prod-icon">▦</span>
+          <span>分镜表</span>
+          <span className="pill">{shots.length} 镜</span>
+          <span className="spacer" />
+          <button className="ghost" onClick={splitShots} disabled={!!shotBusy}>
+            {shotBusy === 'split' ? '拆分中…' : '🔀 从剧本拆分'}
+          </button>
+          <input type="number" className="prod-count" min={2} max={30} value={splitCount}
+            onChange={(e) => setSplitCount(Number(e.target.value))} title="拆分镜头数" />
+        </div>
+
+        <div className="prod-toolbar">
+          <label className="prod-check">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            <span>全选</span>
+          </label>
+          <span className="spacer" />
+          <span className="hint">{selectedShots.size ? `已选 ${selectedShots.size} 镜` : '未勾选时默认全部'}</span>
+          <select className="nodrag prod-model" value={imgModel} onChange={(e) => setImgModel(e.target.value)}>
+            <option value="">默认图像模型</option>
+            {(modelGroups?.image || []).map((m) => <option key={m.id} value={m.id}>{m.label || m.id}</option>)}
+          </select>
+          <button className="ghost" onClick={batchImages} disabled={!!shotBusy}>
+            {shotBusy === 'image' ? '出图中…' : '🎨 批量出图'}
+          </button>
+          <button className="ghost" onClick={composePrompts} disabled={!!shotBusy} title="调 LLM 把剧本+分镜重组成完整提示词">
+            {shotBusy === 'compose' ? '合成中…' : '✨ 智能合成提示词'}
+          </button>
+        </div>
+
+        {!shots.length ? (
+          <div className="prod-card-body prod-empty">
+            <p className="hint">还没有分镜。先在右侧「脚本生成器」生成脚本，再点「从剧本拆分」。</p>
+          </div>
+        ) : (
+          <div className="prod-shot-table">
+            <table>
+              <thead>
+                <tr>
+                  <th className="col-check"></th>
+                  <th className="col-seq">#</th>
+                  <th>画面描述</th>
+                  <th>运镜 / 景别</th>
+                  <th>对白 / 旁白</th>
+                  <th className="col-dur">时长</th>
+                  <th className="col-status">状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shots.map((s) => (
+                  <tr key={s.id} className={selectedShots.has(s.id) ? 'on' : ''}>
+                    <td className="col-check">
+                      <input type="checkbox" checked={selectedShots.has(s.id)} onChange={() => toggleShot(s.id)} />
+                    </td>
+                    <td className="col-seq">{s.seq}</td>
+                    <td>
+                      <textarea rows={2} value={s.scene || ''} placeholder="画面描述"
+                        onChange={(e) => patchShot(s.id, { scene: e.target.value })} />
+                    </td>
+                    <td>
+                      <input value={s.camera || ''} placeholder="如：中景，缓慢推近"
+                        onChange={(e) => patchShot(s.id, { camera: e.target.value })} />
+                    </td>
+                    <td>
+                      <input value={s.dialogue || ''} placeholder="台词 / 旁白"
+                        onChange={(e) => patchShot(s.id, { dialogue: e.target.value })} />
+                    </td>
+                    <td className="col-dur">
+                      <input type="number" min={1} max={20} value={s.duration || 5}
+                        onChange={(e) => patchShot(s.id, { duration: Number(e.target.value) })} />
+                    </td>
+                    <td className="col-status">
+                      {s.image_url
+                        ? <span className="badge done">已出图</span>
+                        : s.status === 'error' ? <span className="badge error">失败</span>
+                        : <span className="badge">待生成</span>}
+                      {s.prompt_used && <span className="hint" title={s.prompt_used}>✓提示词</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {openGen && (

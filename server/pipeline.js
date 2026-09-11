@@ -16,16 +16,20 @@ export function parseJsonLoose(text) {
   throw new Error('JSON 解析失败');
 }
 
-/** 逐字符扫描出所有完整 JSON 对象，用于挽救被 max_tokens 截断的输出 */
+/** 逐字符扫描出所有完整 JSON 对象，用于挽救被 max_tokens 截断的输出。
+ *  额外处理：当外层对象（如 {"shots":[...]}）被截断时，数组里已闭合的 item 对象也能被捞出。 */
 export function extractObjects(text) {
   const out = [];
+  // 先剥掉 ```json 围栏
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const src = fenced ? fenced[1] : text;
   let i = 0;
-  while (i < text.length) {
-    const start = text.indexOf('{', i);
+  while (i < src.length) {
+    const start = src.indexOf('{', i);
     if (start < 0) break;
     let depth = 0; let inStr = false; let esc = false; let end = -1;
-    for (let j = start; j < text.length; j++) {
-      const ch = text[j];
+    for (let j = start; j < src.length; j++) {
+      const ch = src[j];
       if (inStr) {
         if (esc) esc = false;
         else if (ch === '\\') esc = true;
@@ -36,14 +40,48 @@ export function extractObjects(text) {
       else if (ch === '{') depth++;
       else if (ch === '}') { depth--; if (depth === 0) { end = j; break; } }
     }
-    if (end < 0) break;
+    if (end < 0) {
+      // 顶层对象没闭合：尝试提取顶层对象里已闭合的数组 item（如 shots/characters 数组）
+      const nested = extractArrayItems(src.slice(start));
+      if (nested.length) out.push(...nested);
+      break;
+    }
     try {
-      const o = JSON.parse(text.slice(start, end + 1));
+      const o = JSON.parse(src.slice(start, end + 1));
       if (o && typeof o === 'object') out.push(o);
     } catch { /* 跳过解析失败的对象 */ }
     i = end + 1;
   }
   return out;
+}
+
+/** 从一个被截断的顶层对象字符串里，捞出数组字段（shots/characters 等）中已闭合的 item 对象 */
+function extractArrayItems(text) {
+  const items = [];
+  // 找形如 "shots":[  或  "characters":[ 的数组起始
+  const arrRe = /"(shots|characters)"\s*:\s*\[/;
+  const m = text.match(arrRe);
+  if (!m) return items;
+  let i = m.index + m[0].length;
+  while (i < text.length) {
+    const start = text.indexOf('{', i);
+    if (start < 0) break;
+    let depth = 0; let inStr = false; let esc = false; let end = -1;
+    for (let j = start; j < text.length; j++) {
+      const ch = text[j];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = j; break; } }
+    }
+    if (end < 0) break;
+    try {
+      const o = JSON.parse(text.slice(start, end + 1));
+      if (o && typeof o === 'object') items.push(o);
+    } catch { /* skip */ }
+    i = end + 1;
+  }
+  return items;
 }
 
 async function askJson(cfg, { system, user, model, maxTokens = 4096 }) {

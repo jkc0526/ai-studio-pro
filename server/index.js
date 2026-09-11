@@ -472,6 +472,45 @@ app.post('/api/scripts/:id/generate', wrap(async (req, res) => {
   ok(res, { text: r.text, model: r.model, usage: r.usage || null });
 }));
 
+// 生产线：智能合成最终提示词（对勾选的镜头调 LLM，把剧本+分镜信息重组为完整绘图提示词，写回 shot.prompt_used）
+app.post('/api/scripts/:id/compose', wrap(async (req, res) => {
+  const script = q.one('SELECT * FROM script WHERE id = ?', req.params.id);
+  if (!script) return fail(res, '剧本不存在', 404);
+  const b = req.body || {};
+  const shotIds = Array.isArray(b.shotIds) ? b.shotIds : [];
+  if (!shotIds.length) return fail(res, '请先勾选至少一个镜头');
+  const shots = shotIds
+    .map((id) => q.one('SELECT * FROM shot WHERE id = ? AND script_id = ?', id, script.id))
+    .filter(Boolean);
+  if (!shots.length) return fail(res, '所选镜头不存在或不属于该剧本');
+  const cfg = needCfg('thinking');
+  const style = q.one('SELECT * FROM style_preset WHERE id = ?', script.style_id) || null;
+  const characters = q.all('SELECT * FROM character');
+  const castByName = Object.fromEntries(characters.map((c) => [c.name, c]));
+
+  const system = '你是资深 AI 漫剧绘图提示词专家。把用户提供的剧本背景与分镜信息，重组成一条结构完整、可直接用于 AI 图像生成的最终提示词。要求：\n1. 只输出提示词正文，不要解释、不要编号、不要 Markdown\n2. 按"主体+动作+表情 → 环境/背景 → 光影/色调 → 镜头景别与角度 → 画质"组织\n3. 融合角色形象设定，确保同角色跨镜头一致\n4. 中文，50-120 字，末尾加"高清，构图完整，无文字水印"';
+
+  const composed = [];
+  for (const s of shots) {
+    const castText = (s.character_ids ? JSON.parse(s.character_ids || '[]') : [])
+      .map((n) => castByName[n])
+      .filter(Boolean)
+      .map((c) => pipeline.charText(c))
+      .join('；');
+    const user = [
+      script.title && `【剧本】《${script.title}》`,
+      script.outline && `【大纲】${script.outline}`,
+      style?.prompt_prefix && `【画面风格】${style.prompt_prefix}`,
+      `【本镜头】画面：${s.scene || ''}｜对白：${s.dialogue || ''}｜运镜：${s.camera || ''}`,
+      castText && `【出镜角色形象】${castText}`,
+    ].filter(Boolean).join('\n');
+    const r = await callLLM(cfg, { model: b.modelId, system, user });
+    q.run('UPDATE shot SET prompt_used = ?, update_time = ? WHERE id = ?', r.text, now(), s.id);
+    composed.push({ id: s.id, prompt: r.text, model: r.model });
+  }
+  ok(res, { composed: composed.length, model: composed[0]?.model, shots: composed });
+}));
+
 /* ---------------- 角色档案 ---------------- */
 app.get('/api/characters', wrap((req, res) => ok(res, q.all('SELECT * FROM character ORDER BY create_time'))));
 
