@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import { db, q, seed, uid, now, ROOT, DATA_DIR, OUTPUT_DIR } from './db.js';
-import { runWorkflow } from './graph.js';
+import { runWorkflow, ProgressEmitter } from './engine.js';
 import * as pipeline from './pipeline.js';
 import * as videoMod from './video.js';
 import * as exporter from './export.js';
@@ -228,36 +228,77 @@ app.delete('/api/snippets/:id', wrap((req, res) => {
   ok(res, { deleted: req.params.id });
 }));
 
-/* ---------------- 工作流执行 ---------------- */
+/* ---------------- 工作流执行（SSE 实时进度） ---------------- */
 app.post('/api/run', wrap(async (req, res) => {
-  const { canvasId, canvas, nodeIds = [] } = req.body || {};
+  const { canvasId, canvas, nodeIds = [], stream = true } = req.body || {};
   if (!canvas?.nodes) return fail(res, '缺少画布数据');
+
   const configs = {};
   for (const c of q.all('SELECT * FROM ai_config')) configs[c.purpose] = c;
 
-  const startedAt = Date.now();
-  const result = await runWorkflow({ nodes: canvas.nodes, edges: canvas.edges || [], targetIds: nodeIds, configs });
-  const runId = uid('run');
-  q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
-    runId, canvasId || null, result.status, JSON.stringify(result.steps), result.error, now());
+  console.log('[api/run] stream=', stream, 'nodes=', canvas.nodes.length);
 
-  if (canvasId) {
-    const row = q.one('SELECT canvas_json FROM canvas WHERE id = ?', canvasId);
-    if (row) {
-      q.run('UPDATE canvas SET canvas_json = ?, node_count = ?, update_time = ? WHERE id = ?',
-        JSON.stringify(canvas), canvas.nodes.length, now(), canvasId);
+  // 旧 JSON 客户端（不带 stream:true）走兼容路径
+  if (!stream) {
+    const startedAt = Date.now();
+    try {
+      const result = await runWorkflow({ nodes: canvas.nodes, edges: canvas.edges || [], targetIds: nodeIds, configs });
+      const runId = uid('run');
+      q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
+        runId, canvasId || null, result.status, JSON.stringify(result.steps), result.error, now());
+      for (const p of result.patches) {
+        if (!p.data?.imageUrl) continue;
+        q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
+          uid('as'), canvasId || null, p.nodeId, p.data.imageUrl, 'image',
+          p.data.promptUsed || '', p.data.modelUsed || '', now());
+      }
+      ok(res, { ...result, runId, ms: Date.now() - startedAt });
+    } catch (e) {
+      return res.status(400).json({ success: false, error: e.message });
     }
+    return;
   }
-  for (const p of result.patches) {
-    if (!p.data?.imageUrl) continue;
-    q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
-      uid('as'), canvasId || null, p.nodeId, p.data.imageUrl, 'image',
-      p.data.promptUsed || '', p.data.modelUsed || '', now());
+
+  // SSE 流式
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const send = (event, data) => {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
+  };
+  const emitter = new ProgressEmitter();
+  emitter.on('node', (p) => send('node', p));
+  emitter.on('progress', (p) => send('progress', p));
+  emitter.on('error', (p) => send('fatal', p));
+
+  const startedAt = Date.now();
+  let result;
+  try {
+    result = await runWorkflow({
+      nodes: canvas.nodes,
+      edges: canvas.edges || [],
+      targetIds: nodeIds,
+      configs,
+      emitter,
+    });
+    const runId = uid('run');
+    q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
+      runId, canvasId || null, result.status, JSON.stringify(result.steps), result.error || null, now());
+    for (const p of result.patches) {
+      if (!p.data?.imageUrl) continue;
+      q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
+        uid('as'), canvasId || null, p.nodeId, p.data.imageUrl, 'image',
+        p.data.promptUsed || '', p.data.modelUsed || '', now());
+    }
+    send('done', { runId, ms: Date.now() - startedAt, status: result.status, error: result.error,
+                   totalNodes: result.totalNodes, stages: result.stages, errors: result.errors });
+  } catch (e) {
+    send('fatal', { message: e.message });
   }
-  if (result.status === 'failed') {
-    return res.status(200).json({ success: false, error: result.error, data: result });
-  }
-  ok(res, { ...result, runId, ms: Date.now() - startedAt });
+  try { res.end(); } catch { /* ignore */ }
 }));
 
 app.get('/api/runs', wrap((req, res) => ok(res,

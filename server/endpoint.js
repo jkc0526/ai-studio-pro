@@ -243,6 +243,11 @@ async function materialize(value, kind) {
       const ext = /png/.test(meta) ? 'png' : /jpe?g/.test(meta) ? 'jpg' : kind === 'video' ? 'mp4' : 'png';
       return saveBinary(Buffer.from(b64, 'base64'), ext);
     }
+    // 裸 base64（无 data: 前缀）——常见于 b64_json 直接透传；判断依据：长度大 + 无 URL 特征
+    if (/^[A-Za-z0-9+/=]{200,}$/.test(value) && !/^https?:\/\//i.test(value)) {
+      const ext = kind === 'video' ? 'mp4' : 'png';
+      return saveBinary(Buffer.from(value, 'base64'), ext);
+    }
     if (/^https?:\/\//i.test(value)) {
       const res = await fetch(value);
       if (!res.ok) throw new Error(`下载产物失败 HTTP ${res.status}`);

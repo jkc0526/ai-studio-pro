@@ -7,7 +7,7 @@ const STATUS_TEXT = { running: '生成中', done: '完成', error: '失败' };
 export default function ImageNode({ id, data, selected }) {
   const ctx = useCanvas();
   return (
-    <div className="node ${selected ? 'selected' : ''}" style={{ width: 280 }}>
+    <div className={`node ${selected ? 'selected' : ''}`} style={{ width: 280 }}>
       <div className="node-head">
         <span className="dot" style={{ background: '#993C1D' }} />
         <span>{data.label || '图像生成'}</span>

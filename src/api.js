@@ -24,7 +24,14 @@ export const api = {
   listSnippets: () => json('/api/snippets'),
   createSnippet: (body) => json('/api/snippets', { method: 'POST', body }),
   deleteSnippet: (id) => json(`/api/snippets/${id}`, { method: 'DELETE' }),
-  run: (body) => json('/api/run', { method: 'POST', body }),
+  /* 工作流运行：默认走 SSE 实时进度，事件回调 onEvent({event, data})
+     - event 可能是 'node' / 'progress' / 'done' / 'fatal'
+     - 返回 Promise，resolve 时拿到 done 事件的完整结果
+     - 不需要 SSE 时传 stream:false，会走 JSON 接口 */
+  run: (body, { stream = true, onEvent } = {}) => {
+    if (!stream) return json('/api/run', { method: 'POST', body: { ...body, stream: false } });
+    return runSSE('/api/run', { ...body, stream: true }, onEvent);
+  },
   upload: (body) => json('/api/upload', { method: 'POST', body }),
 
   // 剧本
@@ -79,3 +86,45 @@ export const api = {
   // 任务
   getJob: (id) => json(`/api/jobs/${id}`),
 };
+
+/* ---- SSE 客户端 ---- */
+async function runSSE(url, body, onEvent) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`请求失败（HTTP ${res.status}）：${t.slice(0, 200)}`);
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder('utf-8');
+  let buf = '';
+  let final = null;
+  let fatal = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    // 按空行分割事件
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      let event = 'message', dataStr = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataStr += (dataStr ? '\n' : '') + line.slice(5).trim();
+      }
+      if (!dataStr) continue;
+      let data = null;
+      try { data = JSON.parse(dataStr); } catch { /* ignore */ }
+      onEvent?.({ event, data });
+      if (event === 'done') final = data;
+      if (event === 'fatal') fatal = data;
+    }
+  }
+  if (fatal) throw new Error(fatal.message || '执行失败');
+  if (!final) throw new Error('未收到完成事件');
+  return final;
+}

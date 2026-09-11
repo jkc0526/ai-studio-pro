@@ -84,6 +84,7 @@ export default function CanvasView({ notify }) {
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [selectedIds, setSelectedIds] = useState([]);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [savedAt, setSavedAt] = useState(null);
   const [showSnippets, setShowSnippets] = useState(false);
   const [snippetTarget, setSnippetTarget] = useState(null);
@@ -202,30 +203,59 @@ export default function CanvasView({ notify }) {
       ? new Set(targets.flatMap((id) => [...upstreamOf(id, edgesRef.current)]))
       : null;
     setRunning(true);
+    setProgress({ done: 0, total: 0 });
     setNodes((nds) => nds.map((n) => {
       const hit = !affected || affected.has(n.id);
       if (!hit || ['textNode', 'noteNode', 'uploadNode', 'assetNode', 'scriptNode', 'audioNode'].includes(n.type)) return n;
       return { ...n, data: { ...n.data, status: 'running', error: null } };
     }));
+
+    const applyPatch = (nodeId, patch) => {
+      setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n));
+    };
+
     try {
       const res = await api.run({
         canvasId,
         canvas: { nodes: nodesRef.current, edges: edgesRef.current, viewport: viewportRef.current },
         nodeIds: targets,
+      }, {
+        onEvent: ({ event, data }) => {
+          if (event === 'node') {
+            // 实时刷新节点状态 + 结果回写（imageUrl / videoUrl / images / output / modelUsed 等）
+            const patch = { status: data.status };
+            if (data.error) patch.error = data.error;
+            if (typeof data.ms === 'number') patch.lastMs = data.ms;
+            if (data.imageUrl) patch.imageUrl = data.imageUrl;
+            if (data.videoUrl) patch.videoUrl = data.videoUrl;
+            if (Array.isArray(data.images)) patch.images = data.images;
+            if (typeof data.pickedIndex === 'number') patch.pickedIndex = data.pickedIndex;
+            if (data.output) patch.output = data.output;
+            if (data.modelUsed) patch.modelUsed = data.modelUsed;
+            if (data.tokens != null) patch.tokens = data.tokens;
+            if (data.scriptTitle) patch.scriptTitle = data.scriptTitle;
+            if (data.promptUsed) patch.promptUsed = data.promptUsed;
+            applyPatch(data.nodeId, patch);
+          } else if (event === 'progress') {
+            setProgress({ done: data.done, total: data.total });
+          } else if (event === 'fatal') {
+            notify(`执行失败：${data.message}`, true);
+          }
+        },
       });
-      const patches = new Map(res.patches.map((p) => [p.nodeId, p.data]));
-      setNodes((nds) => nds.map((n) => {
-        const p = patches.get(n.id);
-        if (p) return { ...n, data: { ...n.data, ...p } };
-        return n.data.status === 'running' ? { ...n, data: { ...n.data, status: null } } : n;
-      }));
-      const okSteps = res.steps.filter((s) => s.status === 'ok').length;
-      notify(`执行完成：${okSteps} 个节点成功（${res.ms} ms）`);
+      // done 事件后：清理残留 running 状态
+      setNodes((nds) => nds.map((n) => (n.data.status === 'running' ? { ...n, data: { ...n.data, status: null } } : n)));
+      const errCount = res.errors?.length || 0;
+      const msg = errCount
+        ? `执行结束：${res.totalNodes - errCount}/${res.totalNodes} 节点成功（${res.ms} ms）`
+        : `执行完成：${res.totalNodes} 个节点，${res.stages} 个 stage（${res.ms} ms）`;
+      notify(msg, errCount > 0);
     } catch (e) {
       notify(`执行失败：${e.message}`, true);
       setNodes((nds) => nds.map((n) => (n.data.status === 'running' ? { ...n, data: { ...n.data, status: 'error', error: e.message } } : n)));
     } finally {
       setRunning(false);
+      setTimeout(() => setProgress({ done: 0, total: 0 }), 2000);
     }
   }, [canvasId, setNodes, notify]);
 
@@ -347,6 +377,14 @@ export default function CanvasView({ notify }) {
         <button onClick={undo}>撤销</button>
         <button onClick={redo}>重做</button>
         <div className="spacer" />
+        {progress.total > 0 && running && (
+          <span className="pill" style={{ minWidth: 120 }}>
+            <span style={{ display: 'inline-block', width: 80, height: 6, background: 'rgba(0,0,0,0.08)', borderRadius: 3, overflow: 'hidden', verticalAlign: 'middle' }}>
+              <span style={{ display: 'block', height: '100%', width: `${(progress.done / progress.total) * 100}%`, background: '#10B981', transition: 'width 0.2s' }} />
+            </span>
+            <span style={{ marginLeft: 6, fontSize: 12 }}>{progress.done}/{progress.total}</span>
+          </span>
+        )}
         <span className="pill">{savedAt ? `已保存 ${savedAt.toLocaleTimeString('zh-CN')}` : '未保存'}</span>
         <button onClick={() => { setSnippetTarget(selectedIds[0] || null); setShowSnippets((v) => !v); }}>片段库</button>
         <button className="primary" disabled={running} onClick={() => run(selectedIds.length ? selectedIds : [])}>
