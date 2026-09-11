@@ -9,15 +9,39 @@ import { CanvasCtx } from '../context.js';
 import TextNode from '../nodes/TextNode.jsx';
 import LlmNode from '../nodes/LlmNode.jsx';
 import ImageNode from '../nodes/ImageNode.jsx';
+import VideoNode from '../nodes/VideoNode.jsx';
 import NoteNode from '../nodes/NoteNode.jsx';
+import UploadNode from '../nodes/UploadNode.jsx';
+import AssetNode from '../nodes/AssetNode.jsx';
+import ScriptNode from '../nodes/ScriptNode.jsx';
+import AudioNode from '../nodes/AudioNode.jsx';
+import GridNode from '../nodes/GridNode.jsx';
 import SnippetsPanel from '../components/SnippetsPanel.jsx';
+import NodePalette from '../components/NodePalette.jsx';
 
-const nodeTypes = { textNode: TextNode, llmNode: LlmNode, imageNode: ImageNode, noteNode: NoteNode };
+const nodeTypes = {
+  textNode: TextNode, llmNode: LlmNode, imageNode: ImageNode, noteNode: NoteNode,
+  videoNode: VideoNode, uploadNode: UploadNode, assetNode: AssetNode,
+  scriptNode: ScriptNode, audioNode: AudioNode, gridNode: GridNode,
+};
 
 const SAMPLE = {
-  text: '“分手吧！”\n\n接到电话的陈默，苦涩地笑着。他理解平绮绮的选择，毕竟在这个时代，有多少人愿意陪着另一半过苦日子呢？\n\n“明白了。”挂断电话，他握紧了兜里那张皱巴巴的录取通知书。',
+  text: '"分手吧！"\n\n接到电话的陈默，苦涩地笑着。他理解平绮绮的选择，毕竟在这个时代，有多少人愿意陪着另一半过苦日子呢？\n\n"明白了。"挂断电话，他握紧了兜里那张皱巴巴的录取通知书。',
   llm: '你是资深 AI 漫剧策划，请把下面这段小说改写成适配 AI 漫剧的剧本：开头打造爆款钩子，结尾留悬念伏笔，删减拖沓剧情。\n\n{{input}}',
   image: '电影感打光，人物特写，冷色调雨夜街道，超清细节，竖屏构图',
+};
+
+const NODE_DEFAULTS = {
+  textNode: { label: '文本', content: '' },
+  llmNode: { label: '大模型', prompt: '', status: null },
+  imageNode: { label: '图像生成', prompt: '', size: '1024x1024', status: null },
+  noteNode: { label: '备注', content: '' },
+  videoNode: { label: '视频生成', prompt: '', ratio: '16:9', duration: 5, status: null },
+  uploadNode: { label: '上传', url: '', fileName: '', kind: null },
+  assetNode: { label: '素材库', url: '', assetId: null, kind: null },
+  scriptNode: { label: '剧本引用', scriptId: '', includeOutline: true },
+  audioNode: { label: '音频节点', text: '' },
+  gridNode: { label: '九宫格生图', prompt: '', count: 9, size: '1024x1024', images: [], status: null },
 };
 
 let seq = 0;
@@ -29,7 +53,7 @@ export function starterGraph() {
       { id: 'n_text', type: 'textNode', position: { x: 60, y: 160 }, data: { label: '小说原文', content: SAMPLE.text } },
       { id: 'n_llm', type: 'llmNode', position: { x: 400, y: 120 }, data: { label: '剧本改编', prompt: SAMPLE.llm, status: null } },
       { id: 'n_img', type: 'imageNode', position: { x: 760, y: 150 }, data: { label: '分镜生图', prompt: SAMPLE.image, size: '1024x1536', status: null } },
-      { id: 'n_note', type: 'noteNode', position: { x: 400, y: 470 }, data: { label: '备注', content: '选中任意节点 → 点「运行」：会先跑它的上游，再跑它自己。' } },
+      { id: 'n_note', type: 'noteNode', position: { x: 400, y: 470 }, data: { label: '备注', content: '选中任意节点 → 点「运行」：会先跑它的上游，再跑它自己。\n\n提示：双击空白处可以打开「添加节点」面板。' } },
     ],
     edges: [
       { id: 'e1', source: 'n_text', target: 'n_llm', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
@@ -64,6 +88,7 @@ export default function CanvasView({ notify }) {
   const [showSnippets, setShowSnippets] = useState(false);
   const [snippetTarget, setSnippetTarget] = useState(null);
   const [menu, setMenu] = useState(null);
+  const [palette, setPalette] = useState(null); // null | { flow: {x,y} }
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -166,12 +191,7 @@ export default function CanvasView({ notify }) {
 
   const addNode = useCallback((type, pos) => {
     pushHistory();
-    const defaults = {
-      textNode: { label: '文本', content: '' },
-      llmNode: { label: '大模型', prompt: '', status: null },
-      imageNode: { label: '图像生成', prompt: '', size: '1024x1024', status: null },
-      noteNode: { label: '备注', content: '' },
-    }[type] || {};
+    const defaults = NODE_DEFAULTS[type] || {};
     const position = pos || screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
     setNodes((nds) => nds.concat({ id: newId('n'), type, position, data: { ...defaults } }));
   }, [setNodes, screenToFlowPosition, pushHistory]);
@@ -184,7 +204,7 @@ export default function CanvasView({ notify }) {
     setRunning(true);
     setNodes((nds) => nds.map((n) => {
       const hit = !affected || affected.has(n.id);
-      if (!hit || n.type === 'textNode' || n.type === 'noteNode') return n;
+      if (!hit || ['textNode', 'noteNode', 'uploadNode', 'assetNode', 'scriptNode', 'audioNode'].includes(n.type)) return n;
       return { ...n, data: { ...n.data, status: 'running', error: null } };
     }));
     try {
@@ -237,24 +257,47 @@ export default function CanvasView({ notify }) {
     setMenu({ x: event.clientX, y: event.clientY, flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [screenToFlowPosition]);
 
+  const onPaneDoubleClick = useCallback((event) => {
+    event.preventDefault();
+    if (event.target !== event.currentTarget && event.target.closest('.react-flow__node')) return;
+    setPalette({ flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+  }, [screenToFlowPosition]);
+
   const onDrop = useCallback(async (event) => {
     event.preventDefault();
     const file = event.dataTransfer?.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const dataUrl = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(file);
-    });
-    try {
-      const { url } = await api.upload({ name: file.name, dataUrl });
-      pushHistory();
-      setNodes((nds) => nds.concat({
-        id: newId('n'), type: 'imageNode',
-        position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-        data: { label: file.name, prompt: '', size: '1024x1024', imageUrl: url, status: null },
-      }));
-    } catch (e) { notify(e.message, true); }
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+      try {
+        const { url } = await api.upload({ name: file.name, dataUrl });
+        pushHistory();
+        setNodes((nds) => nds.concat({
+          id: newId('n'), type: 'uploadNode',
+          position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+          data: { label: file.name, url, fileName: file.name, kind: 'image' },
+        }));
+      } catch (e) { notify(e.message, true); }
+    } else if (file.type.startsWith('video/')) {
+      const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+      try {
+        const { url } = await api.upload({ name: file.name, dataUrl });
+        pushHistory();
+        setNodes((nds) => nds.concat({
+          id: newId('n'), type: 'uploadNode',
+          position: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+          data: { label: file.name, url, fileName: file.name, kind: 'video' },
+        }));
+      } catch (e) { notify(e.message, true); }
+    }
   }, [setNodes, screenToFlowPosition, pushHistory, notify]);
 
   const openSnippets = useCallback((nodeId) => { setSnippetTarget(nodeId); setShowSnippets(true); }, []);
@@ -268,10 +311,24 @@ export default function CanvasView({ notify }) {
     notify('已插入到节点提示词');
   }, [snippetTarget, setNodes, notify]);
 
+  /** 底部浮动工具条：在选中节点的提示词里追加特殊标记 / 引用 */
+  const insertMarker = useCallback((marker) => {
+    if (!selectedIds.length) return notify('请先选中一个节点');
+    setNodes((nds) => nds.map((n) => {
+      if (!selectedIds.includes(n.id)) return n;
+      const cur = n.data.prompt || '';
+      return { ...n, data: { ...n.data, prompt: cur ? `${cur} ${marker}` : marker } };
+    }));
+    notify(`已插入「${marker}」`);
+  }, [selectedIds, setNodes, notify]);
+
   const ctx = useMemo(() => ({
     updateNode, deleteNode, runNode: (id) => run([id]), openSnippets,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
   }), [updateNode, deleteNode, run, openSnippets, notify]);
+
+  const selectedNode = selectedIds.length === 1 ? nodes.find((n) => n.id === selectedIds[0]) : null;
+  const supportsMarkers = selectedNode && ['llmNode', 'imageNode', 'videoNode', 'gridNode'].includes(selectedNode.type);
 
   return (
     <CanvasCtx.Provider value={ctx}>
@@ -285,10 +342,7 @@ export default function CanvasView({ notify }) {
         <div className="sep" />
         <input style={{ width: 150 }} value={title} placeholder="画布名称" onChange={(e) => setTitle(e.target.value)} />
         <div className="sep" />
-        <button onClick={() => addNode('textNode')}>+ 文本</button>
-        <button onClick={() => addNode('llmNode')}>+ 大模型</button>
-        <button onClick={() => addNode('imageNode')}>+ 生图</button>
-        <button onClick={() => addNode('noteNode')}>+ 备注</button>
+        <button className="primary" onClick={() => setPalette({ flow: screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }) })}>+ 添加节点</button>
         <div className="sep" />
         <button onClick={undo}>撤销</button>
         <button onClick={redo}>重做</button>
@@ -311,6 +365,8 @@ export default function CanvasView({ notify }) {
           onSelectionChange={({ nodes: sel }) => setSelectedIds(sel.map((n) => n.id))}
           onMoveEnd={(_, vp) => setViewport(vp)}
           onPaneContextMenu={onPaneContextMenu}
+          onPaneClick={() => setPalette(null)}
+          onDoubleClick={onPaneDoubleClick}
           defaultViewport={viewport}
           fitView={false}
           proOptions={{ hideAttribution: true }}
@@ -321,17 +377,22 @@ export default function CanvasView({ notify }) {
           <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ background: '#fff' }} />
         </ReactFlow>
 
-        {!nodes.length && <div className="center-hint">画布是空的 — 点上方「+ 文本 / + 大模型 / + 生图」开始，也可以直接把图片拖进来</div>}
+        {!nodes.length && <div className="center-hint">画布是空的 — 双击空白处打开「添加节点」面板，或拖入图片/视频</div>}
 
         {menu && (
-          <div className="panel" style={{ left: menu.x, right: 'auto', top: menu.y, width: 170 }}>
+          <div className="panel" style={{ left: menu.x, right: 'auto', top: menu.y, width: 200 }}>
             <div className="panel-body">
-              {[['textNode', '文本节点'], ['llmNode', '大模型节点'], ['imageNode', '图像生成节点'], ['noteNode', '备注节点']].map(([t, label]) => (
-                <button key={t} onClick={() => { addNode(t, menu.flow); setMenu(null); }}>+ {label}</button>
-              ))}
+              <button onClick={() => { setPalette({ flow: menu.flow }); setMenu(null); }}>＋ 打开节点面板…</button>
+              <div className="hint" style={{ padding: '6px 4px', color: '#999', fontSize: 12 }}>或双击空白处打开</div>
             </div>
           </div>
         )}
+
+        <NodePalette
+          open={!!palette}
+          onPick={(type) => { addNode(type, palette.flow); setPalette(null); }}
+          onClose={() => setPalette(null)}
+        />
 
         <SnippetsPanel
           open={showSnippets}
@@ -340,6 +401,22 @@ export default function CanvasView({ notify }) {
           onClose={() => setShowSnippets(false)}
           notify={notify}
         />
+
+        {/* 底部浮动工具条：选中节点时显示参考 / 标记 / 特效 / 角色库 / 运镜 快捷入口 */}
+        {selectedNode && (
+          <div className="canvas-floating-bar nodrag">
+            <span className="cfb-title">{selectedNode.data.label || selectedNode.type}</span>
+            {supportsMarkers && (
+              <>
+                <button onClick={() => insertMarker('@参考')}>＋ 参考</button>
+                <button onClick={() => insertMarker('@标记')}>＋ 标记</button>
+                <button onClick={() => openSnippets(selectedNode.id)}>＋ 特效</button>
+                <button onClick={() => insertMarker('@角色')}>＋ 角色库</button>
+                <button onClick={() => insertMarker('@运镜')}>＋ 运镜</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </CanvasCtx.Provider>
   );

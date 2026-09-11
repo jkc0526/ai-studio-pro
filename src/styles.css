@@ -347,4 +347,96 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 .insp-body { padding: 10px 11px; display: flex; flex-direction: column; gap: 9px; overflow: auto; flex: 1; }
 .insp-body .field-label { font-size: 11px; }
 .insp-foot { display: flex; gap: 6px; padding: 9px 11px; border-top: 1px solid var(--border); }
+
+/* ---------- 画布：节点面板（双击空白处弹出） ---------- */
+.palette-backdrop {
+  position: fixed; inset: 0; background: rgba(16,24,40,.35);
+  display: flex; align-items: center; justify-content: center; z-index: 40;
+}
+.palette {
+  width: 520px; max-width: calc(100vw - 32px); max-height: 80vh;
+  background: #1f2328; color: #e7eaef; border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4); display: flex; flex-direction: column;
+  font-family: inherit;
+}
+.palette-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid #2d3239; font-size: 14px; font-weight: 500;
+}
+.palette-head button { color: #8b929b; }
+.palette-head button:hover { background: #2d3239; color: #fff; }
+.palette-search { padding: 10px 14px; border-bottom: 1px solid #2d3239; }
+.palette-search input {
+  width: 100%; background: #16191d; border: 1px solid #2d3239; color: #fff;
+  border-radius: 8px; padding: 7px 10px; font-size: 13px;
+}
+.palette-search input::placeholder { color: #6b7280; }
+.palette-body { padding: 10px 14px; overflow: auto; flex: 1; }
+.palette-cat + .palette-cat { margin-top: 10px; }
+.palette-cat-head {
+  display: flex; align-items: baseline; gap: 8px; padding: 4px 6px; color: #8b929b; font-size: 12px;
+}
+.palette-cat-hint { color: #4f5662; font-size: 11px; }
+.palette-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: transparent; border: none; color: #e7eaef;
+  padding: 7px 8px; border-radius: 8px; text-align: left; font-size: 13px;
+}
+.palette-item:hover { background: #2d3239; }
+.palette-icon {
+  width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center;
+  background: #2d3239; border-radius: 6px; font-size: 14px;
+}
+.palette-meta { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.palette-title { font-size: 13px; color: #fff; }
+.palette-desc { font-size: 11px; color: #8b929b; }
+.palette-empty { padding: 14px; color: #6b7280; font-size: 12px; text-align: center; }
+
+/* ---------- 画布：底部浮动工具条 ---------- */
+.canvas-floating-bar {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 6px 8px;
+  background: rgba(31,35,40,.94); color: #e7eaef; border-radius: 24px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.25); font-size: 12px;
+  z-index: 3; backdrop-filter: blur(6px);
+}
+.canvas-floating-bar .cfb-title {
+  padding: 0 8px; color: #8b929b; border-right: 1px solid #3a3f47; margin-right: 4px;
+}
+.canvas-floating-bar button {
+  background: transparent; border: none; color: #cbd0d8; font-size: 12px;
+  padding: 4px 9px; border-radius: 16px; cursor: pointer;
+}
+.canvas-floating-bar button:hover { background: #2d3239; color: #fff; }
+
+/* ---------- 节点：九宫格缩略图 ---------- */
+.img-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  background: #f7f8fa; padding: 4px; border-radius: 6px;
+}
+.img-grid-cell {
+  position: relative; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 4px;
+  border: 2px solid transparent; cursor: pointer; background: #fff;
+}
+.img-grid-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-grid-cell.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.img-grid-mark {
+  position: absolute; right: 4px; top: 4px; background: var(--accent); color: #fff;
+  width: 18px; height: 18px; border-radius: 50%; font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- 节点：素材库缩略图选择 ---------- */
+.grid-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.thumb {
+  position: relative; padding: 0; border: 2px solid transparent; border-radius: 6px;
+  background: #f7f8fa; overflow: hidden; aspect-ratio: 1 / 1; cursor: pointer;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.thumb-vid {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  color: #fff; font-size: 16px; text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  pointer-events: none;
+}
 .insp-foot button { flex: 1; justify-content: center; }
