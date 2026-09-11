@@ -7,6 +7,7 @@ import * as pipeline from './pipeline.js';
 import * as videoMod from './video.js';
 import * as exporter from './export.js';
 import * as ai from './ai.js';
+const { callLLM } = ai;
 import * as endpointMod from './endpoint.js';
 
 const PORT = Number(process.env.PORT || 8787);
@@ -452,6 +453,23 @@ app.post('/api/scripts/:id/extract-characters', wrap(async (req, res) => {
     created.push(id);
   }
   ok(res, { model, created: created.length, skipped: characters.length - created.length, characters: q.all('SELECT * FROM character') });
+}));
+
+// 生产线：从剧本生成完整脚本（调 LLM，返回生成的正文，由前端写回 script.content）
+app.post('/api/scripts/:id/generate', wrap(async (req, res) => {
+  const script = q.one('SELECT * FROM script WHERE id = ?', req.params.id);
+  if (!script) return fail(res, '剧本不存在', 404);
+  const b = req.body || {};
+  const prompt = (b.prompt || '').trim();
+  if (!prompt) return fail(res, '请提供生成提示词');
+  const configs = {};
+  for (const c of q.all('SELECT * FROM ai_config')) configs[c.purpose] = c;
+  const r = await callLLM(configs.thinking, {
+    model: b.modelId,
+    user: prompt,
+    system: '你是一位专业的漫剧编剧。根据用户提供的剧本大纲/资料，撰写完整的故事脚本。要求：\n- 直接输出脚本正文，不要任何解释、寒暄、Markdown 标题\n- 用场景划分，每个场景用【场景N：标题】开头\n- 对白用"角色名：台词"格式\n- 保留必要的动作描写和情绪标注\n- 总长度根据剧本规模自适应（不少于 1500 字）',
+  });
+  ok(res, { text: r.text, model: r.model, usage: r.usage || null });
 }));
 
 /* ---------------- 角色档案 ---------------- */

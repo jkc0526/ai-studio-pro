@@ -6,6 +6,7 @@ const NAV = [
   { key: 'storyboard', label: '分镜', icon: 'M4 5h16v14H4zM4 9h16M9 5v14M15 5v14' },
   { key: 'characters', label: '角色', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0' },
   { key: 'canvas', label: '画布', icon: 'M5 5h6v6H5zM13 5h6v6h-6zM9 13h6v6H9zM11 8h2M12 11v2' },
+  { key: 'production', label: '生产线', icon: 'M3 12h4l3-8 4 16 3-8h4' },
 ];
 
 export default function Sidebar() {
