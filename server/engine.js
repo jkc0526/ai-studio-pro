@@ -13,6 +13,7 @@
 import { EventEmitter } from 'node:events';
 import { callLLM, callImage, callVideo } from './ai.js';
 import { q } from './db.js';
+import { concatClips } from './export.js';
 
 const MAX_UPSTREAM_CHARS = 12000;
 const clip = (s) => (s.length > MAX_UPSTREAM_CHARS ? s.slice(0, MAX_UPSTREAM_CHARS) + '\n…(已截断)' : s);
@@ -214,17 +215,55 @@ const HANDLERS = {
     };
   },
   async videoNode(node, ctx) {
+    const mode = node.data?.mode || 'text';
     const prompt = buildPrompt(node, ctx.upstreamTexts) || (node.data?.prompt || '');
-    const imageUrl = findUpstreamImage(ctx.upstreamNodes);
-    if (!imageUrl) throw new Error('视频节点需要上游图片（上传/素材库/生图/九宫格），但没有找到');
+    // 文生视频不需要上游图；其余模式（全能参考/图生视频/首尾帧）需要
+    const needImage = mode !== 'text';
+    const imageUrl = needImage ? findUpstreamImage(ctx.upstreamNodes) : null;
+    if (needImage && !imageUrl) throw new Error('该模式需要上游图片（上传/素材库/生图/分镜格子或首帧图）');
+    if (!needImage && !prompt) throw new Error('提示词为空：请描述你想生成的视频内容');
     const r = await callVideo(ctx.configs.video, {
       model: node.data?.modelId,
       prompt,
-      image: imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/') ? imageUrl : null,
+      image: imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/')) ? imageUrl : null,
       duration: Number(node.data?.duration) || 5,
       ratio: node.data?.ratio || '16:9',
+      resolution: node.data?.resolution,
     });
-    return { url: r.url, text: r.url, extra: { modelUsed: r.model, imageUrl } };
+    return { url: r.url, videoUrl: r.url, kind: 'video', text: prompt || r.url, extra: { modelUsed: r.model, imageUrl } };
+  },
+
+  /* 批量上传：把节点上的全部素材 URL 透传给下游 */
+  batchUploadNode(node, ctx) {
+    const items = Array.isArray(node.data?.items) ? node.data.items : [];
+    const urls = items.map((i) => i.url).filter(Boolean);
+    return { url: urls[0] || '', urls, kind: items[0]?.kind || 'image', text: urls.join('\n'), extra: { count: urls.length } };
+  },
+
+  /* 3D导演台：输出结构化运镜描述，供下游视频节点作为提示词引用 */
+  directorNode(node, ctx) {
+    const text = (node.data?.output || '').trim();
+    if (!text) throw new Error('请先点「生成运镜描述」');
+    return { text, extra: {} };
+  },
+
+  /* 视频合成：收集上游全部图片/视频，按顺序拼成一条成片（ffmpeg） */
+  async composeNode(node, ctx) {
+    const urls = [];
+    for (const up of ctx.upstreamNodes) {
+      const out = up._output;
+      if (!out) continue;
+      if (Array.isArray(out.urls)) urls.push(...out.urls);
+      if (Array.isArray(out.images)) urls.push(...out.images);
+      if (out.videoUrl) urls.push(out.videoUrl);
+      else if (out.url) urls.push(out.url);
+    }
+    const uniq = [...new Set(urls)].filter(Boolean);
+    if (!uniq.length) throw new Error('没有可合成的片段，请连接上游的图片或视频节点');
+    const ratio = node.data?.ratio || '16:9';
+    const [w, h] = ratio === '9:16' ? [1080, 1920] : ratio === '1:1' ? [1080, 1080] : [1920, 1080];
+    const r = await concatClips({ urls: uniq, width: w, height: h, perImageSeconds: Number(node.data?.imageSeconds) || 3 });
+    return { url: r.url, videoUrl: r.url, kind: 'video', text: r.url, extra: { clips: r.clips, skipped: r.skipped } };
   },
 };
 
@@ -318,8 +357,9 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
           done += 1;
           const patch = { status: 'done', error: null, ranAt: new Date().toISOString(), ms };
           // 把 handler 返回的扩展字段合到 patch（imageUrl / videoUrl / images 等）
-          if (out?.url) patch.imageUrl = out.url;
-          if (out?.videoUrl) patch.videoUrl = out.url;
+          if (out?.videoUrl) patch.videoUrl = out.videoUrl;
+          else if (out?.url) patch.imageUrl = out.url;
+          if (Array.isArray(out?.urls)) patch.urls = out.urls;
           if (Array.isArray(out?.images)) patch.images = out.images;
           if (Number.isInteger(out?.pickedIndex)) patch.pickedIndex = out.pickedIndex;
           if (out?.text) patch.output = out.text;

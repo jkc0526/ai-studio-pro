@@ -899,6 +899,43 @@ app.post('/api/scripts/:id/export', wrap((req, res) => {
 
 app.get('/api/ffmpeg', wrap((req, res) => ok(res, { path: exporter.findFfmpeg() })));
 
+// 画布「视频合成」节点：把多个片段按顺序拼成一条成片
+app.post('/api/compose/clips', wrap(async (req, res) => {
+  const b = req.body || {};
+  const urls = Array.isArray(b.urls) ? b.urls.filter(Boolean) : [];
+  if (!urls.length) return fail(res, '没有可合成的片段');
+  const out = await exporter.concatClips({
+    urls,
+    width: Number(b.width) || 1920,
+    height: Number(b.height) || 1080,
+    fps: Number(b.fps) || 30,
+    perImageSeconds: Number(b.perImageSeconds) || 3,
+  });
+  ok(res, out);
+}));
+
+// 画布「批量上传」节点：一次落盘多个文件
+app.post('/api/upload/batch', wrap((req, res) => {
+  const files = Array.isArray(req.body?.files) ? req.body.files : [];
+  if (!files.length) return fail(res, '没有文件');
+  const saved = [];
+  const skipped = [];
+  for (const f of files) {
+    try {
+      if (!f?.dataUrl?.startsWith('data:')) { skipped.push(f?.name || '?'); continue; }
+      const [meta, b64] = f.dataUrl.split(',');
+      const ext = /jpeg|jpg/.test(meta) ? 'jpg' : /webp/.test(meta) ? 'webp'
+        : /video|mp4/.test(meta) ? 'mp4' : /quicktime|mov/.test(meta) ? 'mov'
+        : /webm/.test(meta) ? 'webm' : 'png';
+      const name = `${uid('med')}.${ext}`;
+      fs.writeFileSync(path.join(OUTPUT_DIR, name), Buffer.from(b64, 'base64'));
+      const kind = /video|mp4|mov|webm/.test(String(f.type || '') + ext) ? 'video' : 'image';
+      saved.push({ url: `/outputs/${name}`, name: f.name, kind });
+    } catch { skipped.push(f?.name || '?'); }
+  }
+  ok(res, { saved, skipped });
+}));
+
 /* ---------------- 媒体库 ---------------- */
 app.get('/api/media', wrap((req, res) => ok(res,
   req.query.scriptId

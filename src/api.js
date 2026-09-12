@@ -33,6 +33,8 @@ export const api = {
     return runSSE('/api/run', { ...body, stream: true }, onEvent);
   },
   upload: (body) => json('/api/upload', { method: 'POST', body }),
+  uploadBatch: (body) => json('/api/upload/batch', { method: 'POST', body }),
+  composeClips: (body) => json('/api/compose/clips', { method: 'POST', body }),
 
   // 剧本
   listScripts: () => json('/api/scripts'),

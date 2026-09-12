@@ -46,10 +46,16 @@ export function findFfmpeg() {
   return null;
 }
 
-function run(bin, args, onLine) {
+function run(bin, args, onLine, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
-    const p = execFile(bin, args, { maxBuffer: 1024 * 1024 * 64 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(`${err.message}\n${String(stderr).slice(-600)}`));
+    const p = execFile(bin, args, { maxBuffer: 1024 * 1024 * 64, timeout: timeoutMs }, (err, stdout, stderr) => {
+      if (err) {
+        // 素材损坏时 ffmpeg 可能解码失败后挂住，靠 timeout 兜底
+        if (err.killed || err.signal === 'SIGTERM') {
+          return reject(new Error(`ffmpeg 处理超时（${Math.round(timeoutMs / 1000)}s），素材可能损坏或过大`));
+        }
+        return reject(new Error(`${err.message}\n${String(stderr).slice(-600)}`));
+      }
       resolve({ stdout, stderr });
     });
     if (onLine && p.stderr) p.stderr.on('data', (d) => onLine(String(d)));
@@ -135,6 +141,57 @@ export async function exportMovie({ scriptId, width = 1080, height = 1920, fps =
   q.run('INSERT INTO media_asset (id, script_id, shot_id, kind, file_path, duration, prompt, model, meta_json, create_time) VALUES (?,?,?,?,?,?,?,?,?,?)',
     uid('md'), scriptId, null, 'movie', url, duration, '', bin, JSON.stringify({ shots: segs.length, skipped, width, height, fps, srt: srtLines.length ? `/outputs/${srtName}` : null }), now());
   return { url, srt: srtLines.length ? `/outputs/${srtName}` : null, duration, shots: segs.length, skipped, width, height, ffmpeg: bin };
+}
+
+/* ---------------- 画布：多片段合成（视频合成节点） ----------------
+   把若干「本地产物 URL」按顺序拼成一条成片；图片会转成静帧视频。 */
+export async function concatClips({ urls = [], width = 1920, height = 1080, fps = 30, perImageSeconds = 3, onProgress }) {
+  const bin = findFfmpeg();
+  if (!bin) throw new Error('未找到 ffmpeg，无法合成。可设置 WEAVE_FFMPEG 环境变量或把 ffmpeg.exe 放到 data/runtime/ffmpeg/');
+  if (!urls.length) throw new Error('没有可合成的片段，请连接上游的图片或视频节点');
+
+  const vf = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`;
+  const segs = [];
+  const skipped = [];
+
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    if (!url || typeof url !== 'string') { skipped.push(i + 1); continue; }
+    const src = url.startsWith('/outputs/') ? path.join(OUTPUT_DIR, path.basename(url)) : url;
+    if (!fs.existsSync(src)) { skipped.push(i + 1); continue; }
+    const out = path.join(TMP, `cc_${Date.now()}_${i}.mp4`);
+    const isImg = /\.(png|jpe?g|webp|bmp)$/i.test(src);
+    try {
+      if (onProgress) onProgress({ stage: 'segment', done: i, total: urls.length });
+      const args = isImg
+        ? ['-y', '-loop', '1', '-t', String(perImageSeconds), '-i', src, '-vf', vf, '-an',
+           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', String(fps), out]
+        : ['-y', '-i', src, '-vf', vf, '-an',
+           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', out];
+      await run(bin, args, null, 60_000);
+      segs.push(out);
+    } catch (e) {
+      skipped.push(i + 1);
+    }
+  }
+  if (!segs.length) throw new Error('所有片段都无法处理（文件缺失或格式不支持）');
+
+  const listFile = path.join(TMP, `cclist_${Date.now()}.txt`);
+  fs.writeFileSync(listFile, segs.map((f) => `file '${f.replace(/\\/g, '/')}'`).join('\n'), 'utf8');
+
+  const outName = `compose_${uid('c').slice(2)}.mp4`;
+  const outPath = path.join(OUTPUT_DIR, outName);
+  if (onProgress) onProgress({ stage: 'concat', done: urls.length, total: urls.length });
+  await run(bin, ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', outPath]);
+
+  for (const f of segs) { try { fs.unlinkSync(f); } catch { /* ignore */ } }
+  try { fs.unlinkSync(listFile); } catch { /* ignore */ }
+
+  const url = `/outputs/${outName}`;
+  q.run('INSERT INTO media_asset (id, script_id, shot_id, kind, file_path, duration, prompt, model, meta_json, create_time) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    uid('md'), null, null, 'compose', url, segs.length * perImageSeconds, '', bin,
+    JSON.stringify({ clips: segs.length, skipped, width, height, fps }), now());
+  return { url, clips: segs.length, skipped, ffmpeg: bin };
 }
 
 const fmtTime = (sec) => {

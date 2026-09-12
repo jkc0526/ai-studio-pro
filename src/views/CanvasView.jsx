@@ -5,7 +5,7 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { api } from '../api.js';
-import { CanvasCtx } from '../context.js';
+import { CanvasCtx, useApp } from '../context.js';
 import TextNode from '../nodes/TextNode.jsx';
 import LlmNode from '../nodes/LlmNode.jsx';
 import ImageNode from '../nodes/ImageNode.jsx';
@@ -16,6 +16,9 @@ import AssetNode from '../nodes/AssetNode.jsx';
 import ScriptNode from '../nodes/ScriptNode.jsx';
 import AudioNode from '../nodes/AudioNode.jsx';
 import GridNode from '../nodes/GridNode.jsx';
+import ComposeNode from '../nodes/ComposeNode.jsx';
+import DirectorNode from '../nodes/DirectorNode.jsx';
+import BatchUploadNode from '../nodes/BatchUploadNode.jsx';
 import SnippetsPanel from '../components/SnippetsPanel.jsx';
 import NodePalette from '../components/NodePalette.jsx';
 
@@ -23,6 +26,7 @@ const nodeTypes = {
   textNode: TextNode, llmNode: LlmNode, imageNode: ImageNode, noteNode: NoteNode,
   videoNode: VideoNode, uploadNode: UploadNode, assetNode: AssetNode,
   scriptNode: ScriptNode, audioNode: AudioNode, gridNode: GridNode,
+  composeNode: ComposeNode, directorNode: DirectorNode, batchUploadNode: BatchUploadNode,
 };
 
 const SAMPLE = {
@@ -34,14 +38,17 @@ const SAMPLE = {
 const NODE_DEFAULTS = {
   textNode: { label: '文本', content: '' },
   llmNode: { label: '大模型', prompt: '', status: null },
-  imageNode: { label: '图像生成', prompt: '', size: '1024x1024', status: null },
-  noteNode: { label: '备注', content: '' },
-  videoNode: { label: '视频生成', prompt: '', ratio: '16:9', duration: 5, status: null },
+  imageNode: { label: '图片', prompt: '', ratio: '16:9', quality: '1K', size: '1536x864', status: null },
+  noteNode: { label: '便签', content: '' },
+  videoNode: { label: '视频', prompt: '', mode: 'text', ratio: '16:9', resolution: '1080p', duration: 5, status: null },
   uploadNode: { label: '上传', url: '', fileName: '', kind: null },
   assetNode: { label: '素材库', url: '', assetId: null, kind: null },
-  scriptNode: { label: '剧本引用', scriptId: '', includeOutline: true },
-  audioNode: { label: '音频节点', text: '' },
-  gridNode: { label: '九宫格生图', prompt: '', count: 9, size: '1024x1024', images: [], status: null },
+  scriptNode: { label: '分镜脚本', scriptId: '', includeOutline: true },
+  audioNode: { label: '音频', text: '' },
+  gridNode: { label: '分镜格子', prompt: '', count: 9, size: '1024x1024', images: [], status: null },
+  composeNode: { label: '视频合成', ratio: '16:9', imageSeconds: 3, status: null },
+  directorNode: { label: '3D导演台', cameraShot: 'orbit', subject: '', space: '', output: '' },
+  batchUploadNode: { label: '批量上传', items: [] },
 };
 
 let seq = 0;
@@ -76,6 +83,7 @@ function upstreamOf(id, edges) {
 }
 
 export default function CanvasView({ notify }) {
+  const { modelGroups, setView } = useApp();
   const [canvases, setCanvases] = useState([]);
   const [canvasId, setCanvasId] = useState(null);
   const [title, setTitle] = useState('');
@@ -229,6 +237,7 @@ export default function CanvasView({ notify }) {
             if (data.imageUrl) patch.imageUrl = data.imageUrl;
             if (data.videoUrl) patch.videoUrl = data.videoUrl;
             if (Array.isArray(data.images)) patch.images = data.images;
+            if (Array.isArray(data.urls)) patch.urls = data.urls;
             if (typeof data.pickedIndex === 'number') patch.pickedIndex = data.pickedIndex;
             if (data.output) patch.output = data.output;
             if (data.modelUsed) patch.modelUsed = data.modelUsed;
@@ -355,7 +364,10 @@ export default function CanvasView({ notify }) {
   const ctx = useMemo(() => ({
     updateNode, deleteNode, runNode: (id) => run([id]), openSnippets,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
-  }), [updateNode, deleteNode, run, openSnippets, notify]);
+    imageModels: modelGroups?.image || [],
+    videoModels: modelGroups?.video || [],
+    openStyles: () => setView?.('styles'),
+  }), [updateNode, deleteNode, run, openSnippets, notify, modelGroups, setView]);
 
   const selectedNode = selectedIds.length === 1 ? nodes.find((n) => n.id === selectedIds[0]) : null;
   const supportsMarkers = selectedNode && ['llmNode', 'imageNode', 'videoNode', 'gridNode'].includes(selectedNode.type);
