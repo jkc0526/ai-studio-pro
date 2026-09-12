@@ -297,8 +297,10 @@ export default function CanvasView({ notify }) {
   }, [screenToFlowPosition]);
 
   const onPaneDoubleClick = useCallback((event) => {
+    // 双击节点内部 / 菜单内部不触发
+    if (event.target?.closest?.('.react-flow__node')) return;
+    if (event.target?.closest?.('.palette')) return;
     event.preventDefault();
-    if (event.target !== event.currentTarget && event.target.closest('.react-flow__node')) return;
     setPalette({ flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
   }, [screenToFlowPosition]);
 
@@ -350,17 +352,6 @@ export default function CanvasView({ notify }) {
     notify('已插入到节点提示词');
   }, [snippetTarget, setNodes, notify]);
 
-  /** 底部浮动工具条：在选中节点的提示词里追加特殊标记 / 引用 */
-  const insertMarker = useCallback((marker) => {
-    if (!selectedIds.length) return notify('请先选中一个节点');
-    setNodes((nds) => nds.map((n) => {
-      if (!selectedIds.includes(n.id)) return n;
-      const cur = n.data.prompt || '';
-      return { ...n, data: { ...n.data, prompt: cur ? `${cur} ${marker}` : marker } };
-    }));
-    notify(`已插入「${marker}」`);
-  }, [selectedIds, setNodes, notify]);
-
   const ctx = useMemo(() => ({
     updateNode, deleteNode, runNode: (id) => run([id]), openSnippets,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
@@ -368,9 +359,6 @@ export default function CanvasView({ notify }) {
     videoModels: modelGroups?.video || [],
     openStyles: () => setView?.('styles'),
   }), [updateNode, deleteNode, run, openSnippets, notify, modelGroups, setView]);
-
-  const selectedNode = selectedIds.length === 1 ? nodes.find((n) => n.id === selectedIds[0]) : null;
-  const supportsMarkers = selectedNode && ['llmNode', 'imageNode', 'videoNode', 'gridNode'].includes(selectedNode.type);
 
   return (
     <CanvasCtx.Provider value={ctx}>
@@ -404,7 +392,8 @@ export default function CanvasView({ notify }) {
         </button>
       </div>
 
-      <div className="canvas-wrap" onDragOver={(e) => e.preventDefault()} onDrop={onDrop} onClick={() => setMenu(null)}>
+      <div className="canvas-wrap" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
+        onClick={() => setMenu(null)} onDoubleClickCapture={onPaneDoubleClick}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -416,7 +405,7 @@ export default function CanvasView({ notify }) {
           onMoveEnd={(_, vp) => setViewport(vp)}
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={() => setPalette(null)}
-          onDoubleClick={onPaneDoubleClick}
+          zoomOnDoubleClick={false}
           defaultViewport={viewport}
           fitView={false}
           proOptions={{ hideAttribution: true }}
@@ -451,22 +440,6 @@ export default function CanvasView({ notify }) {
           onClose={() => setShowSnippets(false)}
           notify={notify}
         />
-
-        {/* 底部浮动工具条：选中节点时显示参考 / 标记 / 特效 / 角色库 / 运镜 快捷入口 */}
-        {selectedNode && (
-          <div className="canvas-floating-bar nodrag">
-            <span className="cfb-title">{selectedNode.data.label || selectedNode.type}</span>
-            {supportsMarkers && (
-              <>
-                <button onClick={() => insertMarker('@参考')}>＋ 参考</button>
-                <button onClick={() => insertMarker('@标记')}>＋ 标记</button>
-                <button onClick={() => openSnippets(selectedNode.id)}>＋ 特效</button>
-                <button onClick={() => insertMarker('@角色')}>＋ 角色库</button>
-                <button onClick={() => insertMarker('@运镜')}>＋ 运镜</button>
-              </>
-            )}
-          </div>
-        )}
       </div>
     </CanvasCtx.Provider>
   );

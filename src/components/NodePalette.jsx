@@ -81,8 +81,7 @@ export default function NodePalette({ open, onPick, onClose }) {
     : [];
 
   return (
-    <>
-      <div className="palette-backdrop" onClick={onClose} />
+    <div className="palette-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
         {searching && (
           <div className="palette-search">
@@ -120,7 +119,7 @@ export default function NodePalette({ open, onPick, onClose }) {
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

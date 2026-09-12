@@ -749,16 +749,17 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 .oii-tab.on { background: #1f2328; color: #fff; font-weight: 500; }
 
 /* 底部参数行 */
-.oii-params { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.oii-spacer { flex: 1; }
+.oii-params { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow: hidden; }
+.oii-spacer { flex: 1; min-width: 4px; }
 .oii-params select {
   background: transparent; border: none; color: #4b5563; font: inherit; font-size: 12px;
-  cursor: pointer; outline: none; max-width: 190px;
+  cursor: pointer; outline: none; max-width: 118px; min-width: 0; flex: 0 1 auto;
 }
-.oii-ratio { display: inline-flex; align-items: center; gap: 2px; }
+.oii-ratio { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .oii-mini {
-  display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent;
-  color: #4b5563; font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 3px; border: none; background: transparent;
+  color: #4b5563; font: inherit; font-size: 12px; padding: 5px 6px; border-radius: 8px;
+  cursor: pointer; white-space: nowrap; flex: none;
 }
 .oii-mini:hover { background: #e9eaee; }
 .oii-send {
@@ -842,3 +843,36 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
   color: var(--muted); font: inherit; font-size: 12px; padding: 10px; cursor: pointer;
 }
 .palette-search-hint:hover { background: #f7f8f9; color: var(--text); }
+
+/* ---------- 节点菜单：浅色版（对齐 OiiOii 截图 1） ---------- */
+.palette-backdrop { background: rgba(16,24,40,.28); }
+.palette {
+  width: 248px; max-height: 76vh; background: #f6f7f8; color: var(--text);
+  border-radius: 14px; border: 1px solid rgba(0,0,0,.05);
+  box-shadow: 0 14px 44px rgba(16,24,40,.20);
+}
+.palette-body { padding: 8px; }
+.palette-cat-head { padding: 8px 10px 4px; }
+.palette-cat-head span { color: #9aa1ab; font-size: 11px; }
+.palette-cat-gap { margin-top: 4px; padding-top: 6px; border-top: 1px solid #e6e8eb; }
+.palette-item {
+  gap: 10px; padding: 8px 10px; border-radius: 9px; color: var(--text);
+  font-size: 13px; width: 100%;
+}
+.palette-item:hover { background: #e8eaee; }
+.palette-icon {
+  width: 20px; height: 20px; flex: none; background: transparent; border-radius: 0;
+  color: #4b5563; display: flex; align-items: center; justify-content: center;
+}
+.palette-meta { gap: 2px; }
+.palette-title { font-size: 13px; color: var(--text); }
+.palette-desc { font-size: 11px; color: #8a9099; }
+.palette-badge {
+  font-size: 10px; color: #98a0aa; background: transparent; padding: 0; margin-left: 6px;
+  letter-spacing: .3px; font-weight: 400;
+}
+.palette-search { border-bottom: 1px solid #e6e8eb; }
+.palette-search input { background: #fff; border: 1px solid #dfe3e8; color: var(--text); }
+.palette-search input::placeholder { color: #9aa1ab; }
+.palette-search-hint { border-top: 1px solid #e6e8eb; color: #8a9099; }
+.palette-empty { color: #9aa1ab; }

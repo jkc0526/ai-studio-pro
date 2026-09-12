@@ -134,13 +134,13 @@ export default function ImageNode({ id, data, selected }) {
           </select>
 
           <div className="oii-ratio">
-            <button className="nodrag" onClick={() => ctx.updateNode(id, { ratio: nextOf(RATIOS, ratio) })}>
+            <button className="nodrag" onClick={() => ctx.updateNode(id, { ratio: nextOf(RATIOS, ratio) })} title="切换比例">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
                 <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
               </svg>
-              {ratio} · {quality}
+              {ratio}
             </button>
-            <button className="nodrag oii-mini" onClick={() => ctx.updateNode(id, { quality: QUALITIES[(QUALITIES.indexOf(quality) + 1) % QUALITIES.length] })}>
+            <button className="nodrag oii-mini" onClick={() => ctx.updateNode(id, { quality: QUALITIES[(QUALITIES.indexOf(quality) + 1) % QUALITIES.length] })} title="切换画质">
               {quality}
             </button>
           </div>

@@ -103,13 +103,13 @@ export default function VideoNode({ id, data, selected }) {
             {models.map((m) => <option key={m.id || m} value={m.id || m}>{m.label || m.id || m}</option>)}
           </select>
 
-          <button className="nodrag oii-mini" onClick={() => ctx.updateNode(id, { ratio: cycle(RATIOS, ratio) })}>
+          <button className="nodrag oii-mini" title="切换比例" onClick={() => ctx.updateNode(id, { ratio: cycle(RATIOS, ratio) })}>
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
               <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
             </svg>
-            {ratio} · {resolution}
+            {ratio}
           </button>
-          <button className="nodrag oii-mini" onClick={() => ctx.updateNode(id, { resolution: cycle(RESOLUTIONS, resolution) })}>
+          <button className="nodrag oii-mini" title="切换分辨率" onClick={() => ctx.updateNode(id, { resolution: cycle(RESOLUTIONS, resolution) })}>
             {resolution}
           </button>
           <button className="nodrag oii-mini" onClick={() => ctx.updateNode(id, { duration: cycle(DURATIONS, duration) })}>
