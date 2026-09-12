@@ -115,6 +115,9 @@ export default function ImageNode({ id, data, selected }) {
           </svg>
           <input type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
         </label>
+        {/* 连接桩挂在卡片边缘的垂直中点（放在 .oii-card 内定位，否则会悬在节点外框上） */}
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
       </div>
 
       {data.status === 'error' && data.error && <div className="oii-err">{data.error}</div>}
@@ -156,9 +159,6 @@ export default function ImageNode({ id, data, selected }) {
           </button>
         </div>
       </div>
-
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

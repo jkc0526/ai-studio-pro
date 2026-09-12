@@ -736,16 +736,20 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 /* 连接桩（Handle）：默认隐身——贴在媒体卡片两侧像"和图片连在一起的脏点"。
    悬停节点 / 选中节点 / 真正拖线连接时才浮现（connectingfrom/to + valid 只在
    连线过程中出现；connectionindicator 是常驻类，不能当浮现条件）。
-   top 对齐媒体卡片中线（标题 18 + 间距 8 + 卡片高 212/2 ≈ 132px）。 */
-.oii-node > .react-flow__handle {
-  top: 132px; opacity: 0; pointer-events: none; transition: opacity .15s;
+   图片/视频节点的 Handle 在 .oii-card 内部（JSX 里），垂直居中贴卡片边缘：
+   overflow:hidden 会裁掉外露的一半，所以 left/right 收到 0 完全贴内侧。 */
+.oii-node .react-flow__handle {
+  opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 3;
 }
-.oii-node:hover > .react-flow__handle,
-.react-flow__node.selected .oii-node > .react-flow__handle,
-.oii-node > .react-flow__handle.connectingfrom,
-.oii-node > .react-flow__handle.connectingto,
-.oii-node > .react-flow__handle.valid,
-.oii-node > .react-flow__handle.clickconnecting {
+.oii-card .react-flow__handle { top: 50%; transform: translateY(-50%); }
+.oii-card .react-flow__handle-left { left: 0; }
+.oii-card .react-flow__handle-right { right: 0; }
+.oii-node:hover .react-flow__handle,
+.react-flow__node.selected .oii-node .react-flow__handle,
+.oii-node .react-flow__handle.connectingfrom,
+.oii-node .react-flow__handle.connectingto,
+.oii-node .react-flow__handle.valid,
+.oii-node .react-flow__handle.clickconnecting {
   opacity: 1; pointer-events: all;
 }
 .oii-prompt textarea, .oii-line {

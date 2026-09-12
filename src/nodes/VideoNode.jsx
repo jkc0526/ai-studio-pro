@@ -76,6 +76,9 @@ export default function VideoNode({ id, data, selected }) {
                 <path d="M3 7h11v10H3zM14 10l6-3v10l-6-3" />
               </svg>
             </span>}
+        {/* 连接桩挂在卡片边缘的垂直中点 */}
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
       </div>
 
       {data.status === 'error' && data.error && <div className="oii-err">{data.error}</div>}
@@ -125,9 +128,6 @@ export default function VideoNode({ id, data, selected }) {
           </button>
         </div>
       </div>
-
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
     </div>
   );
 }
