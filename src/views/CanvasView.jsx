@@ -198,12 +198,34 @@ export default function CanvasView({ notify }) {
     setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
   }, [setNodes, setEdges, pushHistory]);
 
+  /* 空位搜索：面板添加 / 双击菜单的落点若已被占用，按网格向外环形找空位。
+     网格单元取节点footprint（约 540×400）加留白，保证新节点之间不重叠。 */
+  const freeSpot = useCallback((base) => {
+    const cellW = 560, cellH = 440;
+    const taken = (p) => nodesRef.current.some((n) => (
+      Math.abs(n.position.x - p.x) < cellW * 0.6 && Math.abs(n.position.y - p.y) < cellH * 0.6));
+    const ring = [[0, 0], [1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1],
+      [2, 0], [0, 2], [-2, 0], [0, -2], [2, 1], [1, 2], [-1, 2], [-2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1]];
+    for (const [cx, cy] of ring) {
+      const p = { x: base.x + cx * cellW, y: base.y + cy * cellH };
+      if (!taken(p)) return p;
+    }
+    return { x: base.x, y: base.y };
+  }, []);
+
   const addNode = useCallback((type, pos) => {
     pushHistory();
     const defaults = NODE_DEFAULTS[type] || {};
-    const position = pos || screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    let position = pos;
+    if (!position) {
+      const k = nodesRef.current.length % 8;
+      const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      position = freeSpot({ x: center.x + k * 60, y: center.y + k * 44 });
+    } else {
+      position = freeSpot(position);
+    }
     setNodes((nds) => nds.concat({ id: newId('n'), type, position, data: { ...defaults } }));
-  }, [setNodes, screenToFlowPosition, pushHistory]);
+  }, [setNodes, screenToFlowPosition, pushHistory, freeSpot]);
 
   const run = useCallback(async (targetIds) => {
     const targets = targetIds?.length ? targetIds : [];

@@ -672,10 +672,10 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
    OiiOii 风格节点（画布）：节点卡片 + 下方大输入框 + 浮动工具条
    ============================================================ */
 .oii-node {
-  width: 460px; display: flex; flex-direction: column; align-items: center;
+  width: 480px; display: flex; flex-direction: column; align-items: center;
   gap: 8px; position: relative;
 }
-.oii-node-video { width: 520px; }
+.oii-node-video { width: 540px; }
 
 /* 浮动工具条（选中时出现在节点正上方） */
 .oii-toolbar {
@@ -709,11 +709,11 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 
 /* 节点卡片 */
 .oii-card {
-  width: 280px; aspect-ratio: 16 / 10; background: #f1f2f4; border-radius: 14px;
+  width: 340px; aspect-ratio: 16 / 10; background: #f1f2f4; border-radius: 14px;
   border: 1.5px solid transparent; display: flex; align-items: center; justify-content: center;
   overflow: hidden; position: relative; transition: border-color .15s, background .15s;
 }
-.oii-node.on .oii-card { border-color: #3b82f6; background: #f7f9fc; }
+.oii-node.on .oii-card { border-color: #3b82f6; background: #ffffff; }
 .oii-card.has-media { background: #e9eaed; }
 .oii-card img, .oii-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .oii-ph { color: #b0b6bf; display: flex; align-items: center; justify-content: center; }
@@ -725,9 +725,9 @@ a.btn { text-decoration: none; color: var(--text); font-size: 13px; display: inl
 }
 .oii-upload:hover { background: #fff; color: #111; }
 
-/* 下方大输入框 */
+/* 下方大输入框（与媒体卡片拉开间距，对齐 OiiOii 的分离式布局） */
 .oii-prompt {
-  width: 100%; background: #f5f6f8; border-radius: 16px; padding: 14px;
+  width: 100%; margin-top: 12px; background: #f5f6f8; border-radius: 16px; padding: 14px;
   display: flex; flex-direction: column; gap: 10px; border: 1px solid transparent;
   transition: border-color .15s;
 }
