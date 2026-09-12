@@ -11,10 +11,11 @@ import CanvasView from './views/CanvasView.jsx';
 import MediaView from './views/MediaView.jsx';
 import StylesView from './views/StylesView.jsx';
 import ProductionView from './views/ProductionView.jsx';
+import AgentView from './views/AgentView.jsx';
 
 const TITLES = {
   home: '创作台', script: '剧本', storyboard: '分镜', characters: '角色',
-  canvas: '画布', media: '素材库', styles: '风格库', production: '生产线',
+  canvas: '画布', media: '素材库', styles: '风格库', production: '生产线', agents: 'Agent 应用',
 };
 
 export default function App() {
@@ -165,6 +166,7 @@ export default function App() {
             {view === 'media' && <MediaView />}
             {view === 'styles' && <StylesView />}
             {view === 'production' && <ProductionView />}
+            {view === 'agents' && <AgentView />}
           </div>
         </div>
       </div>

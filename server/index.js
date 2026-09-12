@@ -9,6 +9,7 @@ import * as exporter from './export.js';
 import * as ai from './ai.js';
 const { callLLM } = ai;
 import * as endpointMod from './endpoint.js';
+import * as agentsMod from './agents.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -18,10 +19,17 @@ seed();
 
 const ok = (res, data) => res.json({ success: true, data });
 const fail = (res, msg, code = 400) => res.status(code).json({ success: false, error: msg });
-const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
-  console.error('[api]', req.method, req.url, e);
-  fail(res, e?.message || String(e), 500);
-});
+/* 统一错误出口。注意：必须同时兜住「同步抛出」——fn(req,res) 若在返回 Promise 之前就
+   抛异常，Promise.resolve 拿不到它，异常会逃逸到 Express 默认错误页（返回 HTML），
+   前端 JSON.parse 失败后只会看到一句「请求失败」，拿不到真正的原因。 */
+const wrap = (fn) => (req, res) => {
+  const onError = (e) => {
+    console.error('[api]', req.method, req.url, e);
+    fail(res, e?.message || String(e), 500);
+  };
+  try { return Promise.resolve(fn(req, res)).catch(onError); }
+  catch (e) { onError(e); }
+};
 
 /* ---------------- 项目 ---------------- */
 app.get('/api/projects', wrap((req, res) => ok(res, q.all('SELECT * FROM project ORDER BY create_time'))));
@@ -470,7 +478,7 @@ app.post('/api/scripts/:id/generate', wrap(async (req, res) => {
   const r = await callLLM(configs.thinking, {
     model: b.modelId,
     user: prompt,
-    system: '你是一位专业的漫剧编剧。根据用户提供的剧本大纲/资料，撰写完整的故事脚本。要求：\n- 直接输出脚本正文，不要任何解释、寒暄、Markdown 标题\n- 用场景划分，每个场景用【场景N：标题】开头\n- 对白用"角色名：台词"格式\n- 保留必要的动作描写和情绪标注\n- 总长度根据剧本规模自适应（不少于 1500 字）',
+    system: pipeline.SCRIPT_SYSTEM,
   });
   ok(res, { text: r.text, model: r.model, usage: r.usage || null });
 }));
@@ -493,7 +501,7 @@ app.post('/api/scripts/:id/compose', wrap(async (req, res) => {
   const allScenes = q.all('SELECT * FROM scene WHERE script_id = ? OR script_id IS NULL', script.id);
   const sceneById = Object.fromEntries(allScenes.map((s) => [s.id, s]));
 
-  const system = '你是资深 AI 漫剧绘图提示词专家。把用户提供的剧本背景与分镜信息，重组成一条结构完整、可直接用于 AI 图像生成的最终提示词。要求：\n1. 只输出提示词正文，不要解释、不要编号、不要 Markdown\n2. 按"主体+动作+表情 → 环境/背景 → 光影/色调 → 镜头景别与角度 → 画质"组织\n3. 融合角色形象设定，确保同角色跨镜头一致\n4. 融合场景设定（环境/光影/氛围），确保同一场景跨镜头一致\n5. 中文，50-120 字，末尾加"高清，构图完整，无文字水印"';
+  const system = pipeline.COMPOSE_SYSTEM;
 
   const composed = [];
   for (const s of shots) {
@@ -506,14 +514,7 @@ app.post('/api/scripts/:id/compose', wrap(async (req, res) => {
     const sceneText = sc
       ? [sc.name, sc.env, sc.lighting && `光影：${sc.lighting}`, sc.atmosphere && `氛围：${sc.atmosphere}`].filter(Boolean).join('，')
       : '';
-    const user = [
-      script.title && `【剧本】《${script.title}》`,
-      script.outline && `【大纲】${script.outline}`,
-      style?.prompt_prefix && `【画面风格】${style.prompt_prefix}`,
-      `【本镜头】画面：${s.scene || ''}｜对白：${s.dialogue || ''}｜运镜：${s.camera || ''}`,
-      castText && `【出镜角色形象】${castText}`,
-      sceneText && `【所在场景设定】${sceneText}`,
-    ].filter(Boolean).join('\n');
+    const user = pipeline.composeUserMessage({ script, style, shot: s, castText, sceneText });
     const r = await callLLM(cfg, { model: b.modelId, system, user });
     q.run('UPDATE shot SET prompt_used = ?, update_time = ? WHERE id = ?', r.text, now(), s.id);
     composed.push({ id: s.id, prompt: r.text, model: r.model });
@@ -951,6 +952,56 @@ app.post('/api/upload', wrap((req, res) => {
   const file = `${uid('up')}.${ext}`;
   fs.writeFileSync(path.join(OUTPUT_DIR, file), Buffer.from(b64, 'base64'));
   ok(res, { url: `/outputs/${file}`, name });
+}));
+
+/* ---------------- Agent 应用（v0.6） ----------------
+   名册（agent）+ 运行（agent_run / agent_step / SSE 事件流） */
+app.get('/api/agents', wrap((req, res) => ok(res, agentsMod.listAgents())));
+
+// 工具清单（供前端渲染权限勾选）—— 必须放在 /:id 之前
+app.get('/api/agents/tools', wrap((req, res) => ok(res, agentsMod.toolList())));
+
+app.post('/api/agents', wrap((req, res) => ok(res, agentsMod.upsertAgent(req.body || {}))));
+app.put('/api/agents/:id', wrap((req, res) => ok(res, agentsMod.upsertAgent(req.body || {}, req.params.id))));
+app.delete('/api/agents/:id', wrap((req, res) => ok(res, agentsMod.deleteAgent(req.params.id))));
+
+app.get('/api/agent-runs', wrap((req, res) => ok(res, agentsMod.listRuns({ scriptId: req.query.scriptId, limit: req.query.limit }))));
+
+app.post('/api/agent-runs', wrap((req, res) => {
+  const b = req.body || {};
+  ok(res, agentsMod.startRun({ agentId: b.agentId, scriptId: b.scriptId, goal: b.goal }));
+}));
+
+app.get('/api/agent-runs/:id', wrap((req, res) => {
+  const detail = agentsMod.runDetail(req.params.id);
+  if (!detail) return fail(res, '运行记录不存在', 404);
+  ok(res, detail);
+}));
+
+// 实时事件流：先补发一次快照，再接收增量事件
+app.get('/api/agent-runs/:id/stream', (req, res) => {
+  const detail = agentsMod.runDetail(req.params.id);
+  if (!detail) return res.status(404).json({ success: false, error: '运行记录不存在' });
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(`event: snapshot\ndata: ${JSON.stringify(detail)}\n\n`);
+  const unsubscribe = agentsMod.subscribe(req.params.id, res);
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* ignore */ } }, 25000);
+  req.on('close', () => { clearInterval(ping); unsubscribe(); });
+});
+
+app.post('/api/agent-runs/:id/resume', wrap((req, res) => {
+  const b = req.body || {};
+  ok(res, agentsMod.resumeRun(req.params.id, { approved: !!b.approved, note: b.note || '' }));
+}));
+app.post('/api/agent-runs/:id/stop', wrap((req, res) => ok(res, agentsMod.stopRun(req.params.id))));
+app.post('/api/agent-runs/:id/retry', wrap((req, res) => {
+  const b = req.body || {};
+  ok(res, agentsMod.retryFrom(req.params.id, b.fromSeq));
 }));
 
 /* ---------------- 静态资源 ---------------- */

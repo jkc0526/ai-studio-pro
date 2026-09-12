@@ -221,6 +221,31 @@ const SCENE_SYSTEM = `你是漫剧美术指导。从剧本中提取主要场景�
 5. atmosphere 为氛围情绪，如"压抑、紧张、孤独"，10-30 字。
 6. 最多 8 个场景，只提取反复出现或不重复的主要场景。`;
 
+/* ---------------- 共享提示词（生产线路由与 Agent 工具共用，避免两处漂移） ---------------- */
+
+/** 完整脚本生成（原 /api/scripts/:id/generate 的内联提示词） */
+export const SCRIPT_SYSTEM = `你是一位专业的漫剧编剧。根据用户提供的剧本大纲/资料，撰写完整的故事脚本。要求：
+- 直接输出脚本正文，不要任何解释、寒暄、Markdown 标题
+- 用场景划分，每个场景用【场景N：标题】开头
+- 对白用"角色名：台词"格式
+- 保留必要的动作描写和情绪标注
+- 总长度根据剧本规模自适应（不少于 1500 字）`;
+
+/** 最终绘图提示词合成（原 /api/scripts/:id/compose 的内联提示词） */
+export const COMPOSE_SYSTEM = '你是资深 AI 漫剧绘图提示词专家。把用户提供的剧本背景与分镜信息，重组成一条结构完整、可直接用于 AI 图像生成的最终提示词。要求：\n1. 只输出提示词正文，不要解释、不要编号、不要 Markdown\n2. 按"主体+动作+表情 → 环境/背景 → 光影/色调 → 镜头景别与角度 → 画质"组织\n3. 融合角色形象设定，确保同角色跨镜头一致\n4. 融合场景设定（环境/光影/氛围），确保同一场景跨镜头一致\n5. 中文，50-120 字，末尾加"高清，构图完整，无文字水印"';
+
+/** 合成单镜提示词时的 user 消息拼装 */
+export function composeUserMessage({ script, style, shot, castText = '', sceneText = '' }) {
+  return [
+    script?.title && `【剧本】《${script.title}》`,
+    script?.outline && `【大纲】${script.outline}`,
+    style?.prompt_prefix && `【画面风格】${style.prompt_prefix}`,
+    `【本镜头】画面：${shot?.scene || ''}｜对白：${shot?.dialogue || ''}｜运镜：${shot?.camera || ''}`,
+    castText && `【出镜角色形象】${castText}`,
+    sceneText && `【所在场景设定】${sceneText}`,
+  ].filter(Boolean).join('\n');
+}
+
 export async function extractScenes({ script, cfg, model }) {
   const user = `【剧本标题】${script.title || ''}\n【梗概】${script.outline || ''}\n【正文】\n${script.content || ''}\n\n请提取场景档案，输出 JSON。`;
   const { data, raw, model: used } = await askJson(cfg, { system: SCENE_SYSTEM, user, model });

@@ -99,7 +99,38 @@ export const api = {
 
   // 任务
   getJob: (id) => json(`/api/jobs/${id}`),
+
+  // Agent 应用（v0.6）
+  listAgents: () => json('/api/agents'),
+  agentTools: () => json('/api/agents/tools'),
+  saveAgent: (body, id) => json(id ? `/api/agents/${id}` : '/api/agents', { method: id ? 'PUT' : 'POST', body }),
+  deleteAgent: (id) => json(`/api/agents/${id}`, { method: 'DELETE' }),
+  listAgentRuns: (scriptId) => json(`/api/agent-runs${scriptId ? `?scriptId=${scriptId}` : ''}`),
+  startAgentRun: (body) => json('/api/agent-runs', { method: 'POST', body }),
+  getAgentRun: (id) => json(`/api/agent-runs/${id}`),
+  resumeAgentRun: (id, body) => json(`/api/agent-runs/${id}/resume`, { method: 'POST', body }),
+  stopAgentRun: (id) => json(`/api/agent-runs/${id}/stop`, { method: 'POST', body }),
+  retryAgentRun: (id, fromSeq) => json(`/api/agent-runs/${id}/retry`, { method: 'POST', body: { fromSeq } }),
+  /* 实时事件流：snapshot（全量快照）→ step / ask / budget（增量）→ done / fatal（终态后自动关闭）。
+     返回 close 函数，组件卸载时调用。 */
+  agentStream: (id, onEvent) => streamSSE(`/api/agent-runs/${id}/stream`, onEvent),
 };
+
+/* ---- GET SSE 客户端（EventSource 自带断线重连；终态时主动关闭） ---- */
+function streamSSE(url, onEvent) {
+  const es = new EventSource(url);
+  const close = () => { try { es.close(); } catch { /* ignore */ } };
+  for (const name of ['snapshot', 'step', 'ask', 'budget', 'done', 'fatal']) {
+    es.addEventListener(name, (e) => {
+      let data = null;
+      try { data = JSON.parse(e.data); } catch { /* ping 或非 JSON */ }
+      onEvent?.({ event: name, data });
+      if (name === 'done' || name === 'fatal') close();
+    });
+  }
+  es.onerror = () => { /* 断线时 EventSource 会自动重连；终态已 close，无需处理 */ };
+  return close;
+}
 
 /* ---- SSE 客户端 ---- */
 async function runSSE(url, body, onEvent) {

@@ -96,6 +96,32 @@ CREATE TABLE IF NOT EXISTS custom_api (
   poll_status_path TEXT, poll_done_values TEXT, poll_fail_values TEXT, poll_result_path TEXT,
   notes TEXT, create_time TEXT, update_time TEXT
 );
+
+/* ---------------- Agent 应用（v0.6） ----------------
+   agent      剧组名册：一个 Agent = 可复用的「岗位 + 人设 + 工具权限 + 预算」
+   agent_run  一次运行
+   agent_step 每一步（时间线渲染 / 断点续跑 / 审计） */
+CREATE TABLE IF NOT EXISTS agent (
+  id TEXT PRIMARY KEY, name TEXT, role TEXT, avatar TEXT,
+  system_prompt TEXT, model_id TEXT,
+  tools_json TEXT, auto_run INTEGER DEFAULT 0, budget_json TEXT,
+  builtin INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
+  create_time TEXT, update_time TEXT
+);
+CREATE TABLE IF NOT EXISTS agent_run (
+  id TEXT PRIMARY KEY, agent_id TEXT, script_id TEXT,
+  goal TEXT, status TEXT, step_count INTEGER DEFAULT 0,
+  cost_json TEXT, context_json TEXT, error TEXT,
+  create_time TEXT, update_time TEXT
+);
+CREATE TABLE IF NOT EXISTS agent_step (
+  id TEXT PRIMARY KEY, run_id TEXT, seq INTEGER, role TEXT,
+  tool TEXT, args_json TEXT, result_json TEXT,
+  tokens INTEGER, ms INTEGER, status TEXT, error TEXT,
+  create_time TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_step_run ON agent_step(run_id, seq);
+CREATE INDEX IF NOT EXISTS idx_agent_run_script ON agent_run(script_id, create_time);
 `);
 
 export const now = () => new Date().toISOString();
@@ -148,6 +174,54 @@ const BUILTIN_STYLES = [
   ['韩漫厚涂', '韩式厚涂漫画风格，精致五官，皮肤高光细腻，服装褶皱考究，都市光影'],
   ['暗黑哥特', '暗黑哥特风格，低饱和冷灰调，教堂尖顶与彩窗，体积光，压抑氛围'],
   ['复古胶片', '复古胶片摄影风格，暖黄褪色，明显颗粒与漏光，柯达 Portra 色调，怀旧氛围'],
+];
+
+/* ---------------- Agent 剧组预置岗位 ---------------- */
+const BUDGET_DEFAULT = { maxSteps: 30, maxImages: 12, maxVideos: 10, deadlineSec: 1800 };
+const T_STATE = ['get_project_state'];
+const T_TEXT = ['write_script', 'extract_characters', 'extract_scenes', 'split_shots', 'compose_prompts'];
+const T_WRITE = ['update_shot', 'update_character', 'update_scene', 'set_style'];
+const T_IMG = ['generate_image', 'generate_variants', 'select_variant', 'batch_images', 'generate_character_sheets', 'generate_scene_image'];
+const T_VID = ['batch_videos', 'export_movie'];
+const T_CTRL = ['ask_user', 'finish'];
+
+const AGENT_PRESETS = [
+  {
+    name: '制片人', role: '统筹全局', avatar: '制片',
+    auto_run: 0,
+    system_prompt: '你是漫剧制片人，负责把一个模糊的目标拆成可执行的步骤并推进到底。你的职责：先看清现状，再决定顺序；素材够用就不要重复生成；花钱的操作（生图/生视频）之前先向用户说明规模并请求确认；全部完成后检查成片是否可用，再交付总结。你不亲自写画面细节——那是编剧、分镜师、美术指导的活，你负责调度和验收。',
+    tools: [...T_STATE, ...T_TEXT, ...T_WRITE, ...T_IMG, ...T_VID, ...T_CTRL],
+    budget: { ...BUDGET_DEFAULT, maxImages: 24, maxVideos: 20 },
+  },
+  {
+    name: '编剧', role: '写剧本', avatar: '编剧',
+    auto_run: 1,
+    system_prompt: '你是资深 AI 漫剧编剧。你只负责把想法或素材变成可直接拍摄的剧本正文：开头三秒必须有钩子，冲突要集中，结尾留悬念，删掉拖沓剧情。你不碰画面、不碰分镜、不碰生图。正文写完后向用户确认剧情方向是否满意。',
+    tools: [...T_STATE, 'write_script', ...T_CTRL],
+    budget: BUDGET_DEFAULT,
+  },
+  {
+    name: '分镜师', role: '拆分镜', avatar: '分镜',
+    auto_run: 1,
+    system_prompt: '你是资深 AI 漫剧分镜师。你把剧本拆成可直接用于 AI 绘图与视频生成的分镜表，关注节奏、景别变化与信息量。每镜必须能被画出来，不能出现"同上""继续"这类指代。拆完检查镜头数量与时长是否合理，必要时逐镜微调画面描述、台词与运镜。',
+    tools: [...T_STATE, 'split_shots', 'compose_prompts', 'update_shot', ...T_CTRL],
+    budget: BUDGET_DEFAULT,
+  },
+  {
+    name: '美术指导', role: '锁定形象与场景', avatar: '美术',
+    auto_run: 0,  // 岗位带图像类工具，默认「花钱前必须确认」
+    system_prompt: '你是漫剧美术指导，负责跨镜头一致性。你的职责是：从剧本提取角色形象锁定档案与场景锁定档案，把外形、服装、环境、光影、氛围写成固定可复用的具体描述；统一画面风格。形象描述越具体，后面每一镜越不会崩脸。你不负责出图。',
+    tools: [...T_STATE, 'extract_characters', 'extract_scenes', 'update_character', 'update_scene', 'set_style',
+      'generate_character_sheets', 'generate_scene_image', ...T_CTRL],
+    budget: BUDGET_DEFAULT,
+  },
+  {
+    name: '剪辑师', role: '出图出片与成片导出', avatar: '剪辑',
+    auto_run: 0,
+    system_prompt: '你是漫剧剪辑与出片负责人。职责：把分镜逐镜出图、出视频，对不满意的镜头重做或做多版本择优，最后拼接导出成片。生图生视频是要花钱的不可逆操作，每次动手之前必须用 ask_user 告诉用户本次要生成多少张/多少条、大概消耗多少，得到同意再执行。出图前请确认已经存在角色与场景档案，否则提示先补齐。',
+    tools: [...T_STATE, 'generate_image', 'generate_variants', 'select_variant', 'batch_images', 'batch_videos', 'export_movie', ...T_CTRL],
+    budget: BUDGET_DEFAULT,
+  },
 ];
 
 export function seed() {
@@ -211,6 +285,16 @@ export function seed() {
       '{"model":"{{model}}","messages":[{"role":"system","content":"{{system}}"},{"role":"user","content":"{{user}}"}],"stream":false,"max_tokens":{{max_tokens}}}',
       '', 'text', 'choices.0.message.content', '', 5000, 120, 'status', 'completed,success', 'failed,error', 'url',
       '自定义接口示例：可改成任何 REST 接口，用 {{prompt}} {{image}} {{model}} 等占位符注入参数', now(), now());
+  }
+  // Agent 剧组名册（开箱可用，可改名改人设改权限）
+  if (!one('SELECT id FROM agent LIMIT 1')) {
+    for (const [sort, a] of AGENT_PRESETS.entries()) {
+      run(`INSERT INTO agent (id, name, role, avatar, system_prompt, model_id, tools_json,
+           auto_run, budget_json, builtin, sort_order, create_time, update_time)
+           VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)`,
+        uid('ag'), a.name, a.role, a.avatar, a.system_prompt, '', JSON.stringify(a.tools),
+        a.auto_run, JSON.stringify(a.budget), sort, now(), now());
+    }
   }
 }
 

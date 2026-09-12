@@ -7,6 +7,7 @@ const NAV = [
   { key: 'characters', label: '角色', icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0' },
   { key: 'canvas', label: '画布', icon: 'M5 5h6v6H5zM13 5h6v6h-6zM9 13h6v6H9zM11 8h2M12 11v2' },
   { key: 'production', label: '生产线', icon: 'M3 12h4l3-8 4 16 3-8h4' },
+  { key: 'agents', label: 'Agent 应用', icon: 'M12 2v3M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM9 12h.01M15 12h.01M9.5 16h5M5 11H3M21 11h-2' },
 ];
 
 export default function Sidebar() {

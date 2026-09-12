@@ -21,3 +21,6 @@ screenshot-*.png
 .idea/
 .DS_Store
 Thumbs.db
+
+# 测试产物截图
+test/shot-*.png
