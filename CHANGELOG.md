@@ -1,5 +1,12 @@
 # 更新日志
 
+## v0.7.4 — 2026-09-13
+
+### 视频请求体移除 duration 字段
+- 用户生成视频时上游返回 `400：duration is not an allowed request field`（agnes-video-2.5 等严格网关）。
+- `builtinSpec(kind=video)` 不再发送 `duration`，只保留 `model / prompt / image / aspect_ratio`。
+- 原因：不同网关/模型对视频字段名差异很大，统一发送容易触发严格字段校验；后续若某网关需要，可在 provider `extra_json` 里配置扩展字段。
+
 ## v0.7.3 — 2026-09-13
 
 ### 视频节点模型下拉随 provider 切换
