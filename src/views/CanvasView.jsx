@@ -468,9 +468,6 @@ export default function CanvasView({ notify }) {
           </svg>
           Agent
         </button>
-        <button className="primary" disabled={running} onClick={() => run(selectedIds.length ? selectedIds : [])}>
-          {running ? '执行中…' : selectedIds.length ? '▶ 运行所选' : '▶ 运行全部'}
-        </button>
       </div>
 
       <div className="canvas-wrap" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
