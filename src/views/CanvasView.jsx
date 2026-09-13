@@ -374,13 +374,36 @@ export default function CanvasView({ notify }) {
     notify('已插入到节点提示词');
   }, [snippetTarget, setNodes, notify]);
 
+  /* 上游素材引用表：连线传进来的图片/视频按顺序编号（图片1..n / 视频1..n）。
+     节点用它渲染「参考」缩略图行与 @ 引用，并写进 node.data.mediaRefs，
+     后端 engine.js 按同名 key 解析 @图片N，保证两端编号一致。 */
+  const refsOf = useCallback((nodeId) => {
+    const map = new Map(nodesRef.current.map((n) => [n.id, n]));
+    const ups = edgesRef.current
+      .filter((e) => e.target === nodeId && map.has(e.source))
+      .map((e) => map.get(e.source));
+    const refs = [];
+    let imgN = 0; let vidN = 0;
+    for (const up of ups) {
+      const d = up.data || {};
+      const isUpload = up.type === 'uploadNode' || up.type === 'assetNode';
+      const gridImg = Array.isArray(d.images) && d.images.length
+        ? d.images[Number.isInteger(d.pickedIndex) ? d.pickedIndex : d.images.length - 1] : null;
+      const vid = d.videoUrl || (isUpload && d.kind === 'video' ? d.url : null);
+      const img = d.imageUrl || gridImg || (isUpload && d.kind !== 'video' ? d.url : null);
+      if (vid) refs.push({ key: `视频${++vidN}`, type: 'video', url: vid, from: up.type, label: d.label || '' });
+      else if (img) refs.push({ key: `图片${++imgN}`, type: 'image', url: img, from: up.type, label: d.label || '' });
+    }
+    return refs;
+  }, []);
+
   const ctx = useMemo(() => ({
-    updateNode, deleteNode, runNode: (id) => run([id]), openSnippets,
+    updateNode, deleteNode, runNode: (id) => run([id]), openSnippets, refsOf,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
     imageModels: modelGroups?.image || [],
     videoModels: modelGroups?.video || [],
     openStyles: () => setView?.('styles'),
-  }), [updateNode, deleteNode, run, openSnippets, notify, modelGroups, setView]);
+  }), [updateNode, deleteNode, run, openSnippets, refsOf, notify, modelGroups, setView]);
 
   return (
     <CanvasCtx.Provider value={ctx}>

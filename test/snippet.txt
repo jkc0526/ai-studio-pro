@@ -1,0 +1,7 @@
+file=index-D9nWBQxr.js line40 len=157336
+
+--- col 73135 ---
+,t.clientY-c.top-r.clientTop]}}return[t.pageX,t.pageY]}const Ay={passive:!1},fi={capture:!0,passive:!1};function kc(t){t.stopImmediatePropagation()}function ls(t){t.preventDefault(),t.stopImmediatePropagation()}function Pp(t){var r=t.document.documentElement,o=Dt(t).on("dragstart.drag",ls,fi);"onselectstart"in r?o.on("selectstart.drag",ls,fi):(r.__noselect=r.style.MozUserSelect,r.style.MozUserSelect="none")}function Ip(t,r){var o=t.document.documentElement,l=Dt(t).on("dragstart.drag",null);r&&(l
+
+--- col 74947 ---
+el.drag",T).style("touch-action","none").style("-webkit-tap-highlight-color","rgba(0,0,0,0)")}function S($,A){if(!(y||!t.call(this,$,A))){var P=w(this,r.call(this,$,A),$,A,"mouse");P&&(Dt($.view).on("mousemove.drag",j,fi).on("mouseup.drag",M,fi),Pp($.view),kc($),g=!1,h=$.clientX,p=$.clientY,P("start",$))}}function j($){if(ls($),!g){var A=$.clientX-h,P=$.clientY-p;g=A*A+P*P>v}c.mouse("drag",$)}function M($){Dt($.view).on("mousemove.drag mouseup.drag",null),Ip($.view,g),ls($),c.mouse("end",$)}func

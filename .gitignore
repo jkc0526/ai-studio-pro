@@ -24,3 +24,6 @@ Thumbs.db
 
 # 娴嬭瘯浜х墿鎴浘
 test/shot-*.png
+
+# 测试报告产物
+test/*.out.txt

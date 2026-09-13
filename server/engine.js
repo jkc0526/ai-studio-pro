@@ -142,6 +142,38 @@ function findUpstreamImage(upstreamNodes) {
   return null;
 }
 
+/* ---------- 上游素材引用（@图片N / @视频N） ----------
+   前端 CanvasView.refsOf 把连线素材按顺序编号写进 node.data.mediaRefs：
+   [{ key: '图片1', type: 'image', url }]，编号规则两端一致。
+   提示词里写 @图片2 就取第二张；没写 mention 时回落「取上游最后一张图」，行为向后兼容。 */
+function mentionKeys(prompt) {
+  const out = [];
+  // 容忍 @ 与名字之间有空格（手打常见）
+  const re = /@\s*(图片|视频)\s*(\d+)/g;
+  let m;
+  while ((m = re.exec(prompt || ''))) out.push(`${m[1]}${m[2]}`);
+  return out;
+}
+
+function pickRefUrl(node, prompt, upstreamNodes, wantType = 'image') {
+  const list = Array.isArray(node.data?.mediaRefs) ? node.data.mediaRefs : [];
+  for (const key of mentionKeys(prompt)) {
+    const hit = list.find((r) => r.key === key && r.type === wantType);
+    if (hit?.url) return hit.url;
+  }
+  const first = list.find((r) => r.type === wantType && r.url);
+  if (first?.url) return first.url;
+  return wantType === 'image' ? findUpstreamImage(upstreamNodes) : null;
+}
+
+/** 送给模型的提示词里不要留 @ 记号（模型不认识），换成可读的「参考图N」 */
+const stripMentions = (prompt) => String(prompt || '')
+  .replace(/@\s*(图片|视频)\s*(\d+)/g, (_, t, n) => (t === '图片' ? `参考图${n}` : `参考视频${n}`))
+  .trim();
+
+// 供测试直接断言 @ 引用解析（test/agent-e2e 之外的小单测）
+export { mentionKeys, stripMentions, pickRefUrl };
+
 /* ---------- 4. 节点 handler 注册表 ---------- */
 const HANDLERS = {
   textNode(node, ctx) {
@@ -219,12 +251,13 @@ const HANDLERS = {
     const prompt = buildPrompt(node, ctx.upstreamTexts) || (node.data?.prompt || '');
     // 文生视频不需要上游图；其余模式（全能参考/图生视频/首尾帧）需要
     const needImage = mode !== 'text';
-    const imageUrl = needImage ? findUpstreamImage(ctx.upstreamNodes) : null;
+    // @图片N 优先；没写 mention 时取上游最后一张图（与旧行为一致）
+    const imageUrl = needImage ? pickRefUrl(node, node.data?.prompt || '', ctx.upstreamNodes, 'image') : null;
     if (needImage && !imageUrl) throw new Error('该模式需要上游图片（上传/素材库/生图/分镜格子或首帧图）');
     if (!needImage && !prompt) throw new Error('提示词为空：请描述你想生成的视频内容');
     const r = await callVideo(ctx.configs.video, {
       model: node.data?.modelId,
-      prompt,
+      prompt: stripMentions(prompt),
       image: imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/')) ? imageUrl : null,
       duration: Number(node.data?.duration) || 5,
       ratio: node.data?.ratio || '16:9',

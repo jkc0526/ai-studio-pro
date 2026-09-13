@@ -1,0 +1,72 @@
+﻿node : (node:17416) ExperimentalWarning: SQLite is an experimental feature and 
+might change at any time
+所在位置 行:445 字符: 44
++ ... on "E:\work Buddy\weave-canvas"; node test/agent-e2e.mjs 2>&1 | Out-F ...
++                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:17416) Ex...nge at any time 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+WeaveCanvas server 鈫?http://127.0.0.1:51714
+鏁版嵁鐩綍: E:\work Buddy\weave-canvas\data\tmp\agent-e2e
+
+Mock 妯″瀷 :51713    WeaveCanvas :51714    鏁版嵁鐩綍 E:\work Buddy\weave-canvas\data\tmp\agent-e2e
+
+棰勭疆宀椾綅锛氬埗鐗囦汉(20 宸ュ叿路闇€纭)銆佺紪鍓?4 宸ュ叿路鍏ㄨ嚜鍔?銆佸垎闀滃笀(6 宸ュ叿路鍏ㄨ嚜鍔?銆佺編鏈寚瀵?10 宸ュ叿路闇€纭)銆佸壀杈戝笀(9 宸ュ叿路闇€纭)
+  鉁?棰勭疆 5 涓矖浣?  鉁?鍒剁墖浜洪粯璁ら潪鍏ㄨ嚜鍔?  鉁?缇庢湳鎸囧涔熼潪鍏ㄨ嚜鍔紙甯﹀浘鍍忓伐鍏凤級
+
+=== A. 涓婚摼璺細鎷嗛暅鍏ㄨ嚜鍔?鈫?ask_user 鎸傝捣 鈫?鎷掔粷鑺遍挶鎿嶄綔 鈫?瀹屾垚 ===
+  鉁?鍚姩杩愯杩斿洖 runId
+  鉁?鈶?杩愯杩涘叆 waiting锛坅sk_user 鎸傝捣锛?  鉁?鈶?鎸傝捣姝ラ钀藉簱涓旀爣璁?pending_confirmation
+  鉁?鈶?鎸傝捣鍓嶅凡璺戝畬 get_project_state
+  鉁?鈶?鎸傝捣鍓嶅凡璺戝畬 write_script
+  鉁?鈶?鎸傝捣鍓嶅凡璺戝畬 extract_characters
+  鉁?鈶?鎸傝捣鍓嶅凡璺戝畬 split_shots
+  鉁?鈶?鍓ф湰姝ｆ枃鐪熷疄鍐欏叆
+  鉁?鈶?瑙掕壊鐪熷疄鍏ュ簱
+  鉁?鈶?鍒嗛暅鐪熷疄鍏ュ簱涓斾负 4 闀?  鉁?鈶?闀滃ご鏃堕暱/杩愰暅/鍑洪暅瑙掕壊钀藉簱
+  鉁?鈶?鎸傝捣鏃舵病鏈変换浣曞浘鍍忚皟鐢?  鉁?鈶?ask_user 绛斿鍚庣户缁紝鍛戒腑鑺遍挶闂搁棬
+  鉁?鈶?闂搁棬姝ラ鎸傝捣鏃朵粛鏈皟鐢ㄥ浘鍍忔帴鍙?  鉁?鈶?鎷掔粷鍚庤繍琛屾甯哥粨鏉燂紙done锛?  鉁?鈶?鎷掔粷琚褰曚负 skipped
+  鉁?鈶?鎷掔粷鍚庝緷鏃ч浂鍥惧儚璋冪敤
+  鉁?鈶?finish 姝ラ钀藉簱
+  鉁?鈶?棰勭畻缁熻宸茶惤搴?  鉁?鈶?SSE 鏀跺埌 snapshot 蹇収
+  鉁?鈶?SSE 鏀跺埌澧為噺 step 浜嬩欢
+  鉁?銐?SSE 鏀跺埌 done 浜嬩欢
+
+=== B. 浜屾杩愯锛氫笁閬撴姢鏍忔槸鍚︽嫤浣?+ 鎵瑰噯鍚庣湡瀹炴墽琛?===
+  鉁?銐?鎶ゆ爮锛氬凡鏈夋鏂囨椂鎷掔粷鏃犺剳瑕嗙洊
+  鉁?銐?鎶ゆ爮锛氬凡鏈夐暅澶存椂瑕佹眰鏄惧紡鎸囧畾妯″紡
+  鉁?銐?鎶ゆ爮锛氳鑹插凡瀛樺湪鏃朵笉閲嶅鍒涘缓
+  鉁?銐?闀滃ご鏁版湭琚敼鍔紙鎶ゆ爮鐢熸晥锛?  鉁?銐?鎸傝捣鏃朵粛鏈皟鐢ㄥ浘鍍忔帴鍙?  鉁?銐?鍛戒腑鑺遍挶闂搁棬涓斾粛鏈湡姝ｅ嚭鍥?  鉁?銐?鎵瑰噯鍚庣湡瀹炶皟鐢ㄤ簡鍥惧儚鎺ュ彛
+  鉁?銐?鍥惧儚澶辫触琚褰曚负 error 瑙傚療锛堜笉涓柇杩愯锛?  鉁?銐?澶辫触鍚庤繍琛屼粛姝ｅ父鏀舵暃
+  鉁?銐?姝ラ鍙畬鏁村洖璇伙紙鍒锋柊鍙画涓婏級
+
+=== C. 鏉冮檺鐧藉悕鍗?+ 鍚嶅唽 CRUD ===
+  鉁?銐?鏂板缓宀椾綅鎴愬姛
+  鉁?銐?宸ュ叿鐧藉悕鍗曞凡钀藉簱
+  鉁?銐?鏀瑰悕涓庢敼鏉冮檺鐢熸晥
+  鉁?銐?棰勭畻鍚堝苟榛樿鍊?  鉁?銐?鏉冮檺鐧藉悕鍗曟嫤鎴秺鏉冨伐鍏峰苟鎻愮ず妯″瀷
+  鉁?銑?琚嫤鍚庤繍琛屾敹鏁涗负 stopped锛堟湭绌鸿浆鐑ч挶锛?  鉁?銑?瓒婃潈鏈熼棿闆跺浘鍍忚皟鐢?  鉁?銑?宸ュ叿娓呭崟鎺ュ彛鍙敤
+  鉁?銑?宸ュ叿鎸?kind 鍒嗙粍姝ｇ‘
+[api] POST /api/agent-runs Error: Agent 涓嶅瓨鍦?    at Module.startRun (file:///E:
+/work%20Buddy/weave-canvas/server/agents.js:428:21)
+    at file:///E:/work%20Buddy/weave-canvas/server/index.js:972:21
+    at file:///E:/work%20Buddy/weave-canvas/server/index.js:30:32
+    at Layer.handle [as handle_request] (E:\work Buddy\weave-canvas\node_module
+s\express\lib\router\layer.js:95:5)
+    at next (E:\work Buddy\weave-canvas\node_modules\express\lib\router\route.j
+s:149:13)
+    at Route.dispatch (E:\work Buddy\weave-canvas\node_modules\express\lib\rout
+er\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\work Buddy\weave-canvas\node_module
+s\express\lib\router\layer.js:95:5)
+    at E:\work Buddy\weave-canvas\node_modules\express\lib\router\index.js:284:
+15
+    at Function.process_params (E:\work Buddy\weave-canvas\node_modules\express
+\lib\router\index.js:346:12)
+    at next (E:\work Buddy\weave-canvas\node_modules\express\lib\router\index.j
+s:280:10)
+  鉁?銑?涓嶅瓨鍦ㄧ殑 Agent 浼氭姤閿?  鉁?銑?鍒犻櫎宀椾綅鎴愬姛
+  鉁?銑?杩愯鍘嗗彶鍙垪鍑?
+=== 姹囨€伙細鉁?47 閫氳繃 / 鉂?0 澶辫触  (LLM 璋冪敤 22 娆★紝鍥惧儚璋冪敤 1 娆? ===
