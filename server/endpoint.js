@@ -99,7 +99,9 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
       body: {
         model, prompt: vars.prompt,
         ...(vars.image ? { image: vars.image } : {}),
-        ...(vars.duration ? { duration: vars.duration } : {}),
+        // duration / aspect_ratio 暂不上传：不同网关字段名差异大，且严格网关会 400
+        // （如 agnes-video-2.5 报 duration is not an allowed request field）
+        // 后续若某网关需要，可在 provider extra_json 里配置扩展字段
         ...(vars.ratio ? { aspect_ratio: vars.ratio } : {}),
       },
       resultType: 'url',
