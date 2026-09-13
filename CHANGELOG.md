@@ -1,5 +1,23 @@
 # 更新日志
 
+## v0.7.3 — 2026-09-13
+
+### 视频节点模型下拉随 provider 切换
+- `App.jsx` `loadModels()` 默认会同时拉 thinking / image_gen / video 三个用途的模型并按 kind 合并，
+  之前视频节点一直显示 thinking 用途供应商的模型。
+- `video.js` `modelKind()` 增加 minimax / hailuo / h3 为 video 关键字，minimax-h3 等模型能进视频下拉。
+- 新增 `test/video-models-verify.mjs`（5/5）。
+
+### 严格网关不再被 image_url 拒绝
+- aa.mate70.com 对 `/video/generations` 返回 400 `image_url is not an allowed request field`。
+- `builtinSpec(kind=video/image)` 移除冗余的 `image_url` 字段，只保留标准 `image` 字段。
+- 同步更新 `test/image-mention.mjs` 断言。
+
+### 移除画布顶部「运行所选 / 运行全部」按钮
+- 用户反馈误点后会执行全部节点 / 生成不必要的图片。
+- 删除 `CanvasView.jsx` 顶栏 primary 运行按钮，只保留节点自身的生成按钮（点哪个就跑哪个）。
+- 新增 `test/no-runall-verify.mjs`（3/3）。
+
 ## v0.7.2 — 2026-09-13
 
 ### 图片节点 @ 引用全链路打通（与视频节点对齐）
