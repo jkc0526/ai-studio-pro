@@ -122,6 +122,16 @@ CREATE TABLE IF NOT EXISTS agent_step (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_step_run ON agent_step(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_agent_run_script ON agent_run(script_id, create_time);
+
+/* ---------------- Skill 应用（v0.7） ----------------
+   一个 Skill = 一套可复用的创作套路：风格 + 参数 + 步骤recipe + 提示词增强。
+   对齐 LibTV 的「斜杠命令 + 标题 + 描述 + 作者 + 使用量」形态。 */
+CREATE TABLE IF NOT EXISTS skill (
+  id TEXT PRIMARY KEY, command TEXT, title TEXT, category TEXT, kind TEXT,
+  summary TEXT, author TEXT, avatar TEXT, uses INTEGER DEFAULT 0,
+  builtin INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0,
+  spec_json TEXT, create_time TEXT, update_time TEXT
+);
 `);
 
 export const now = () => new Date().toISOString();
@@ -144,6 +154,9 @@ ensureColumn('ai_config', 'notes', 'notes TEXT');
 ensureColumn('shot', 'ratio', 'ratio TEXT');
 // 分镜 → 场景引用（人物引用已有 character_ids）
 ensureColumn('shot', 'scene_id', 'scene_id TEXT');
+// 运行记录挂载 Skill（快照存 spec，历史运行可复现，不受 Skill 后续修改影响）
+ensureColumn('agent_run', 'skill_id', 'skill_id TEXT');
+ensureColumn('agent_run', 'skill_json', 'skill_json TEXT');
 
 // 常见的第三方 / 自建网关预设（不含密钥，粘贴 Key 即可用）
 const PROVIDER_PRESETS = [
@@ -224,6 +237,125 @@ const AGENT_PRESETS = [
   },
 ];
 
+/* ---------------- Skill 内置套路 ----------------
+   一个 Skill = 风格 + 参数 + 步骤 recipe + 提示词增强。
+   goalTemplate 支持占位符：{script} 剧本名、{shots} 镜头数、{title} 套路名。
+   boosts 会在 Agent 决策时注入到岗位人设后面，形成该套路专属的创作规范。 */
+const SKILL_PRESETS = [
+  {
+    command: 'short-drama', title: '精品女频短剧', category: '短剧漫剧', kind: 'video',
+    summary: '钩子开场 + 强冲突 + 每集留悬念，一句话工业化出片', author: '内置', avatar: '短剧',
+    spec: {
+      styleName: '韩漫厚涂', shots: 8, ratio: '9:16', duration: 4, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的短剧成片',
+      recipe: ['get_project_state', 'write_script', 'extract_characters', 'extract_scenes', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos', 'export_movie'],
+      boosts: {
+        script: '前 3 秒必须出现冲突或反转钩子；结尾留悬念；对白短促有张力，删掉一切铺垫与解释性描写。',
+        split: '每镜只做一件事，景别与角度必须变化；情绪高点给特写；单镜 4 秒左右，整体节奏前紧后松。',
+        compose: '突出人物面部情绪与光线层次，电影级布光，浅景深，竖屏构图。',
+      },
+    },
+  },
+  {
+    command: 'wuxia-classic', title: '古典武侠片', category: '专业影视', kind: 'video',
+    summary: '水墨留白 + 剑意慢镜 + 东方美学全流程', author: '内置', avatar: '武侠',
+    spec: {
+      styleName: '水墨武侠', shots: 8, ratio: '16:9', duration: 5, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的武侠短片',
+      recipe: ['get_project_state', 'write_script', 'extract_characters', 'extract_scenes', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos', 'export_movie'],
+      boosts: {
+        script: '以意境与留白取胜，对话极少；用环境与动作传达情绪，避免现代词汇。',
+        split: '多用远景与空镜营造留白，打斗用局部特写加慢动作；单镜 5 秒，允许长镜。',
+        compose: '中国水墨写意笔触，墨色浓淡晕染，大面积留白构图，冷月残阳色调。',
+      },
+    },
+  },
+  {
+    command: 'pop-mv', title: 'POP MV', category: '音乐MV', kind: 'video',
+    summary: '卡点快切 + 高饱和霓虹 + 每镜 3 秒', author: '内置', avatar: 'MV',
+    spec: {
+      styleName: '赛博朋克', shots: 12, ratio: '16:9', duration: 3, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的音乐 MV 成片',
+      recipe: ['get_project_state', 'write_script', 'extract_characters', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos', 'export_movie'],
+      boosts: {
+        script: '不写对白，写成可卡点的画面段落；情绪递进，副歌段落画面最强烈。',
+        split: '每镜 3 秒以内，快切节奏；强对比构图，人物居中特写与广角交替。',
+        compose: '高饱和霓虹紫青对撞，雨夜湿滑反射，强反差硬光，运动模糊。',
+      },
+    },
+  },
+  {
+    command: 'dreamcore', title: '梦核美学', category: '短视频', kind: 'video',
+    summary: '低饱和柔焦 + 空旷场景 + 非叙事片段拼贴', author: '内置', avatar: '梦核',
+    spec: {
+      styleName: '复古胶片', shots: 6, ratio: '9:16', duration: 5, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的梦核氛围短片',
+      recipe: ['get_project_state', 'write_script', 'extract_scenes', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos'],
+      boosts: {
+        script: '不要完整叙事，写成彼此松散的意象片段；大量悬置的问句与空白。',
+        split: '空旷场景、无人或背影；固定机位为主，轻微推移；单镜 5 秒。',
+        compose: '低饱和柔焦，褪色暖黄，颗粒与漏光，空旷安静的构图。',
+      },
+    },
+  },
+  {
+    command: 'cinematic-a24', title: 'A24 电影感', category: '专业影视', kind: 'video',
+    summary: '冷调低照度 + 对称构图 + 情绪留白', author: '内置', avatar: '电影',
+    spec: {
+      styleName: '写实电影感', shots: 8, ratio: '16:9', duration: 6, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的电影感短片',
+      recipe: ['get_project_state', 'write_script', 'extract_characters', 'extract_scenes', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos', 'export_movie'],
+      boosts: {
+        script: '克制叙事，把冲突藏在日常对话与沉默里；不解释，让观众自己拼。',
+        split: '对称构图、固定机位、长镜；人物常处于画面边缘；单镜 6 秒以上。',
+        compose: '冷调低照度，实用光源，柯达胶片颗粒，浅景深，情绪留白。',
+      },
+    },
+  },
+  {
+    command: 'beauty-ugc', title: '美妆 UGC 测评', category: '商业广告', kind: 'video',
+    summary: '手持近景 + 自然口播 + 卖点可视化', author: '内置', avatar: '美妆',
+    spec: {
+      styleName: '写实电影感', shots: 6, ratio: '9:16', duration: 4, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的美妆测评短片',
+      recipe: ['get_project_state', 'write_script', 'extract_characters', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos'],
+      boosts: {
+        script: '第一人称口播，语气像朋友聊天；先抛痛点，再给对比如证据；结尾一句行动号召。',
+        split: '手持近景与产品特写交替；出现使用前后对比；单镜 4 秒。',
+        compose: '自然窗光，皮肤质感真实不过曝，暖色调，真实居家背景。',
+      },
+    },
+  },
+  {
+    command: 'ecom-ugc', title: '电商带货 UGC', category: '商业广告', kind: 'video',
+    summary: '30 秒信息流：痛点 → 场景 → 行动号召', author: '内置', avatar: '带货',
+    spec: {
+      styleName: '日系2D动画', shots: 6, ratio: '9:16', duration: 5, agentName: '制片人',
+      goalTemplate: '用「{title}」套路把《{script}》做成 {shots} 镜的带货短视频',
+      recipe: ['get_project_state', 'write_script', 'split_shots', 'compose_prompts', 'batch_images', 'batch_videos'],
+      boosts: {
+        script: '严格 30 秒结构：0-3 秒痛点、3-15 秒产品解法、15-25 秒使用场景、最后 5 秒行动号召。',
+        split: '前 3 秒必须是产品出镜的高冲击画面；中段用演示镜头；结尾定格产品与标语。',
+        compose: '产品高光清晰，背景简洁不抢主体，明亮通透。',
+      },
+    },
+  },
+  {
+    command: 'casting', title: '角色三视图', category: '角色', kind: 'image',
+    summary: '先锁形象再做三视图，解决跨镜崩脸', author: '内置', avatar: '选角',
+    spec: {
+      styleName: '国风厚涂', shots: 0, ratio: '3:4', duration: 0, agentName: '美术指导',
+      goalTemplate: '用「{title}」套路为《{script}》建立角色形象锁定档案并生成三视图',
+      recipe: ['get_project_state', 'extract_characters', 'generate_character_sheets'],
+      boosts: {
+        script: '只做形象，不写剧情。',
+        split: '不拆分镜。',
+        compose: '三视图必须同一个人，白底、正交视角、比例准确。',
+      },
+    },
+  },
+];
+
 export function seed() {
   const p = one('SELECT id FROM project LIMIT 1');
   if (!p) {
@@ -294,6 +426,16 @@ export function seed() {
            VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)`,
         uid('ag'), a.name, a.role, a.avatar, a.system_prompt, '', JSON.stringify(a.tools),
         a.auto_run, JSON.stringify(a.budget), sort, now(), now());
+    }
+  }
+  // Skill 套路库（对齐 LibTV 的 skill 市场形态：斜杠命令 + 分类 + 作者 + 使用量）
+  if (!one('SELECT id FROM skill LIMIT 1')) {
+    for (const [sort, s] of SKILL_PRESETS.entries()) {
+      run(`INSERT INTO skill (id, command, title, category, kind, summary, author, avatar,
+           uses, builtin, sort_order, spec_json, create_time, update_time)
+           VALUES (?,?,?,?,?,?,?,?,0,1,?,?,?,?)`,
+        uid('sk'), s.command, s.title, s.category, s.kind, s.summary, s.author, s.avatar,
+        sort, JSON.stringify(s.spec), now(), now());
     }
   }
 }

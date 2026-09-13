@@ -103,6 +103,14 @@ export const api = {
   // Agent 应用（v0.6）
   listAgents: () => json('/api/agents'),
   agentTools: () => json('/api/agents/tools'),
+
+  // Skill 套路（v0.7）
+  listSkills: (params) => json(`/api/skills${params ? `?${params}` : ''}`),
+  skillMeta: () => json('/api/skills/meta'),
+  getSkill: (id) => json(`/api/skills/${id}`),
+  saveSkill: (body, id) => json(id ? `/api/skills/${id}` : '/api/skills', { method: id ? 'PUT' : 'POST', body }),
+  deleteSkill: (id) => json(`/api/skills/${id}`, { method: 'DELETE' }),
+  applySkill: (id, body) => json(`/api/skills/${id}/apply`, { method: 'POST', body }),
   saveAgent: (body, id) => json(id ? `/api/agents/${id}` : '/api/agents', { method: id ? 'PUT' : 'POST', body }),
   deleteAgent: (id) => json(`/api/agents/${id}`, { method: 'DELETE' }),
   listAgentRuns: (scriptId) => json(`/api/agent-runs${scriptId ? `?scriptId=${scriptId}` : ''}`),

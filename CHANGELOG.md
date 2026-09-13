@@ -1,5 +1,19 @@
 # 更新日志
 
+## v0.7.0 — 2026-09-13
+
+- 新增「Skill 套路」体系（对齐 LibTV 的 skill 市场）：一个 Skill = 风格 + 镜头参数 + 步骤 recipe + 提示词增强
+- Agent 应用新增 Skill 套路库：类型 tab（全部/图片/视频）+ 题材分类 chips + 卡片（斜杠命令 / 描述 / 作者 / 使用量 / 镜头参数），一键「使用」
+- 套用一个 Skill 会自动：按模板填好目标文案、切到套路指定岗位、把风格与镜头参数落到剧本、写进运行记录
+- 编排引擎按套路执行：期望步骤链 + 剧本/分镜/提示词三项专属规范注入 System 提示词；运行快照 Skill 保证历史可复现
+- 内置 8 个套路：精品女频短剧 / 古典武侠片 / POP MV / 梦核美学 / A24 电影感 / 美妆 UGC 测评 / 电商带货 UGC / 角色三视图
+- 新增接口：`GET|POST /api/skills`、`PUT|DELETE /api/skills/:id`、`GET /api/skills/meta`、`POST /api/skills/:id/apply`（套用预览零花费）
+- 画布顶栏按 LibTV 改造：视图标签页（画布/工作流/故事板）+ Agent 入口；底部悬浮工具条与左下控件条（整理画布 / 小地图 / 隐藏连线 / 网格吸附 / 缩放）
+- 修复**事后连线不传图**：节点只读 CanvasView 的 ref，而 ref 在 effect 中更新导致新建连线后节点读不到 → 节点改用 React Flow store 订阅，连线即时生效
+- 修复 Skill 新建时 INSERT 参数错位导致 spec_json 丢失；编辑 Skill 时 spec 被整体覆盖 → 改为深合并
+- 修复 `loadAgent(undefined)` 把 undefined 绑到 SQLite 参数导致「只选 Skill 不选岗位」直接报错
+- 新增测试：skill-e2e（38）、skill-ui-verify（22）、ref-live-verify（11，覆盖事后连线场景）
+
 ## v0.6.0 — 2026-09-13
 
 - 新增「Agent 应用」视图（侧边栏常驻）：多 Agent 剧组编排，一句话目标 → Agent 自动调度整条流水线

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useStore } from '@xyflow/react';
 import { useCanvas } from '../context.js';
 
 const STATUS_TEXT = { running: '生成中', done: '完成', error: '失败' };
@@ -38,14 +38,17 @@ export default function VideoNode({ id, data, selected }) {
   const duration = Number(data.duration) || 5;
   const models = ctx.videoModels || [];
 
-  const refs = useMemo(() => ctx.refsOf?.(id) || [], [ctx, id]);
+  /* 订阅 React Flow 的图结构：连线/上游节点产物变化时本节点会重渲染，
+     从而让「参考」行立刻反映最新连线（只读 CanvasView 的 ref 会有一帧延迟且不触发重渲染） */
+  const graphNodes = useStore((s) => s.nodes);
+  const graphEdges = useStore((s) => s.edges);
+  const refs = useMemo(() => ctx.refsOf?.(id, { nodes: graphNodes, edges: graphEdges }) || [],
+    [ctx, id, graphNodes, graphEdges]);
   const prompt = data.prompt || '';
   const usedKeys = useMemo(() => (prompt.match(/@\s*(?:图片|视频)\s*\d+/g) || []).map((s) => s.replace(/@\s*/, '').replace(/\s+/g, '')), [prompt]);
-  const mentionList = useMemo(() => {
-    if (!mention) return [];
-    const q = mention.query || '';
-    return refs.filter((r) => !q || r.key.includes(q) || (r.label || '').includes(q));
-  }, [mention, refs]);
+  const mentionList = mention
+    ? refs.filter((r) => !mention.query || r.key.includes(mention.query) || (r.label || '').includes(mention.query))
+    : [];
 
   // 素材编号表同步给节点数据 → 后端按同样的 key 解析 @图片N
   useEffect(() => {

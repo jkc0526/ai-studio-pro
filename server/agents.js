@@ -2,6 +2,7 @@ import { q, uid, now } from './db.js';
 import { callLLM } from './ai.js';
 import * as pipeline from './pipeline.js';
 import { TOOLS, ALWAYS_ALLOWED, toolCatalog } from './tools.js';
+import { skillSystemBlock, renderSkill, bumpUsage } from './skills.js';
 
 /* ============================================================================
    Agent 编排引擎
@@ -37,8 +38,10 @@ const stopped = new Set();
 
 const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n)}…` : t; };
 
-const loadRun = (id) => q.one('SELECT * FROM agent_run WHERE id = ?', id);
-const loadAgent = (id) => q.one('SELECT * FROM agent WHERE id = ?', id);
+const loadRun = (id) => (id ? q.one('SELECT * FROM agent_run WHERE id = ?', id) : null);
+/* 注意：id 为空时必须短路返回 null —— node:sqlite 不允许把 undefined 绑到参数上，
+   否则「只选 Skill 不选岗位」的场景会直接抛 ERR_INVALID_ARG_TYPE */
+const loadAgent = (id) => (id ? q.one('SELECT * FROM agent WHERE id = ?', id) : null);
 
 const nextSeq = (runId) =>
   (q.one('SELECT COALESCE(MAX(seq),0) m FROM agent_step WHERE run_id = ?', runId)?.m || 0) + 1;
@@ -85,12 +88,12 @@ export function parseDecision(text) {
 }
 
 /* ---------------- 上下文拼装 ---------------- */
-function buildSystem(agent, allowed, budget) {
+function buildSystem(agent, allowed, budget, skill = null) {
   return `你是「${agent.name}」，在 WeaveCanvas（AI 漫剧创作流水线）里担任${agent.role}。
 
 【你的岗位设定】
 ${agent.system_prompt || '（未设置，请按岗位名尽职）'}
-
+${skillSystemBlock(skill)}
 【输出格式｜严格遵守】
 你每一轮只能输出一个 JSON 对象，且只能输出 JSON，不要任何解释文字，不要 markdown 代码块。
 要调用工具时输出：
@@ -136,12 +139,12 @@ function buildUser({ goal, script, cost, budget, history, lastError }) {
 }
 
 /* ---------------- 单步决策 ---------------- */
-async function decide({ agent, allowed, budget, goal, script, cost, history, lastError }) {
+async function decide({ agent, allowed, budget, goal, script, cost, history, lastError, skill }) {
   const cfg = q.one('SELECT * FROM ai_config WHERE purpose = ?', 'thinking');
   if (!cfg) throw new Error('没有找到文本模型配置，请先到「设置」里配置');
   const r = await callLLM(cfg, {
     model: agent.model_id || undefined,
-    system: buildSystem(agent, allowed, budget),
+    system: buildSystem(agent, allowed, budget, skill),
     user: buildUser({ goal, script, cost, budget, history, lastError }),
     maxTokens: 1600,
   });
@@ -187,6 +190,8 @@ async function drive(runId, input = null) {
   const allowList = [...new Set([...(JSON.parse(agent.tools_json || '[]')), ...ALWAYS_ALLOWED])]
     .filter((n) => TOOLS[n]);
   const budget = { ...DEFAULT_BUDGET, ...(JSON.parse(agent.budget_json || '{}')) };
+  /* Skill 套路：启动时快照进 agent_run，历史运行可复现（Skill 后续被改不影响旧记录） */
+  const skill = run0.skill_json ? JSON.parse(run0.skill_json) : null;
 
   const ctx = {
     scriptId: run0.script_id,
@@ -300,7 +305,7 @@ async function drive(runId, input = null) {
 
       let decision;
       try {
-        decision = await decide({ agent, allowed: allowList, budget, goal: run0.goal, script: ctx.script(), cost, history, lastError });
+        decision = await decide({ agent, allowed: allowList, budget, goal: run0.goal, script: ctx.script(), cost, history, lastError, skill });
       } catch (e) {
         fixCount++;
         lastError = e.message;
@@ -423,27 +428,55 @@ export function collectArtifacts(scriptId) {
 /* ============================================================================
    对外接口
    ============================================================================ */
-export function startRun({ agentId, scriptId, goal }) {
-  const agent = loadAgent(agentId);
-  if (!agent) throw new Error('Agent 不存在');
+export function startRun({ agentId, scriptId, goal, skillId }) {
   const script = q.one('SELECT * FROM script WHERE id = ?', scriptId);
   if (!script) throw new Error('剧本不存在');
-  const label = String(goal || '').trim();
-  if (!label) throw new Error('请填写本次目标');
+
+  /* Skill 套用：模板渲染出目标文案 + 记录套路快照 */
+  let skill = null;
+  let rendered = null;
+  if (skillId) {
+    const row = q.one('SELECT * FROM skill WHERE id = ?', skillId) || q.one('SELECT * FROM skill WHERE command = ?', String(skillId).replace(/^\//, ''));
+    if (!row) throw new Error('Skill 不存在');
+    skill = { ...row, spec: JSON.parse(row.spec_json || '{}') };
+    rendered = renderSkill(skill, { script, shots: skill.spec?.shots });
+  }
+
+  // 没选岗位时，若套路指定了岗位名就自动用那个岗位
+  const agent = loadAgent(agentId) || (rendered?.agentName
+    ? q.one('SELECT * FROM agent WHERE name = ?', rendered.agentName)
+    : null);  if (!agent) throw new Error(rendered?.agentName ? `未找到「${rendered.agentName}」岗位，请先在 Agent 应用里创建` : 'Agent 不存在');
+
+  const label = String(goal || '').trim() || rendered?.goal || '';
+  if (!label) throw new Error('请填写本次目标，或选择一个 Skill 套路');
 
   const running = q.one("SELECT id FROM agent_run WHERE script_id = ? AND status IN ('running','waiting') LIMIT 1", scriptId);
   if (running) throw new Error('该剧本已有一个运行中的 Agent 任务，请先等它结束或停止它');
 
   const id = uid('arun');
-  q.run(`INSERT INTO agent_run (id, agent_id, script_id, goal, status, step_count, cost_json, context_json, create_time, update_time)
-         VALUES (?,?,?,?,?,0,?,?,?,?)`,
-    id, agentId, scriptId, label, 'running',
+  q.run(`INSERT INTO agent_run (id, agent_id, script_id, goal, status, step_count, cost_json, context_json, skill_id, skill_json, create_time, update_time)
+         VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`,
+    id, agent.id, scriptId, label, 'running',
     JSON.stringify({ images: 0, videos: 0, llmCalls: 0 }),
     JSON.stringify({ history: [{ seq: 1, role: 'system', text: `本次目标：${label}` }], pending: null, startedAt: Date.now() }),
-    now(), now());
+    rendered?.skillId || null, rendered ? JSON.stringify(rendered) : null, now(), now());
+
+  // 同时把套路的风格与镜头参数落到剧本上（写进数据，Agent 每一步都能读到）
+  if (rendered) {
+    try {
+      if (rendered.styleName) {
+        const st = q.one('SELECT * FROM style_preset WHERE name = ?', rendered.styleName);
+        if (st) {
+          q.run('UPDATE script SET style_id = ?, update_time = ? WHERE id = ?', st.id, now(), scriptId);
+          q.run('UPDATE shot SET style_id = ?, update_time = ? WHERE script_id = ?', st.id, now(), scriptId);
+        }
+      }
+      if (rendered.skillId) bumpUsage(rendered.skillId);
+    } catch { /* 落参失败不影响运行 */ }
+  }
 
   setTimeout(() => { drive(id).catch((e) => { setStatus(id, 'failed', e.message); emit(id, 'fatal', { message: e.message }); }); }, 0);
-  return { runId: id, agent: { id: agent.id, name: agent.name }, scriptId };
+  return { runId: id, agent: { id: agent.id, name: agent.name }, scriptId, skill: rendered };
 }
 
 /** 用户对挂起的确认/提问给出答复；进程重启后也能冷启动续上 */

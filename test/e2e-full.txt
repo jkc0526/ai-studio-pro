@@ -1,17 +1,17 @@
-﻿node : (node:17416) ExperimentalWarning: SQLite is an experimental feature and 
-might change at any time
-所在位置 行:445 字符: 44
-+ ... on "E:\work Buddy\weave-canvas"; node test/agent-e2e.mjs 2>&1 | Out-F ...
+﻿node : (node:3784) ExperimentalWarning: SQLite is an experimental feature and m
+ight change at any time
+所在位置 行:445 字符: 405
++ ... g utf8 -Append test/regress.txt; node test/agent-e2e.mjs 2>&1 | Out-F ...
 +                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: ((node:17416) Ex...nge at any time 
+    + CategoryInfo          : NotSpecified: ((node:3784) Exp...nge at any time 
    :String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
 (Use `node --trace-warnings ...` to show where the warning was created)
-WeaveCanvas server 鈫?http://127.0.0.1:51714
+WeaveCanvas server 鈫?http://127.0.0.1:61447
 鏁版嵁鐩綍: E:\work Buddy\weave-canvas\data\tmp\agent-e2e
 
-Mock 妯″瀷 :51713    WeaveCanvas :51714    鏁版嵁鐩綍 E:\work Buddy\weave-canvas\data\tmp\agent-e2e
+Mock 妯″瀷 :61426    WeaveCanvas :61447    鏁版嵁鐩綍 E:\work Buddy\weave-canvas\data\tmp\agent-e2e
 
 棰勭疆宀椾綅锛氬埗鐗囦汉(20 宸ュ叿路闇€纭)銆佺紪鍓?4 宸ュ叿路鍏ㄨ嚜鍔?銆佸垎闀滃笀(6 宸ュ叿路鍏ㄨ嚜鍔?銆佺編鏈寚瀵?10 宸ュ叿路闇€纭)銆佸壀杈戝笀(9 宸ュ叿路闇€纭)
   鉁?棰勭疆 5 涓矖浣?  鉁?鍒剁墖浜洪粯璁ら潪鍏ㄨ嚜鍔?  鉁?缇庢湳鎸囧涔熼潪鍏ㄨ嚜鍔紙甯﹀浘鍍忓伐鍏凤級
@@ -50,9 +50,9 @@ Mock 妯″瀷 :51713    WeaveCanvas :51714    鏁版嵁鐩綍 E:\work Buddy\
   鉁?銑?琚嫤鍚庤繍琛屾敹鏁涗负 stopped锛堟湭绌鸿浆鐑ч挶锛?  鉁?銑?瓒婃潈鏈熼棿闆跺浘鍍忚皟鐢?  鉁?銑?宸ュ叿娓呭崟鎺ュ彛鍙敤
   鉁?銑?宸ュ叿鎸?kind 鍒嗙粍姝ｇ‘
 [api] POST /api/agent-runs Error: Agent 涓嶅瓨鍦?    at Module.startRun (file:///E:
-/work%20Buddy/weave-canvas/server/agents.js:428:21)
-    at file:///E:/work%20Buddy/weave-canvas/server/index.js:972:21
-    at file:///E:/work%20Buddy/weave-canvas/server/index.js:30:32
+/work%20Buddy/weave-canvas/server/agents.js:448:33)
+    at file:///E:/work%20Buddy/weave-canvas/server/index.js:973:21
+    at file:///E:/work%20Buddy/weave-canvas/server/index.js:31:32
     at Layer.handle [as handle_request] (E:\work Buddy\weave-canvas\node_module
 s\express\lib\router\layer.js:95:5)
     at next (E:\work Buddy\weave-canvas\node_modules\express\lib\router\route.j

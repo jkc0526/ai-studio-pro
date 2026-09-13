@@ -36,6 +36,13 @@ export default function AgentView() {
   const [starting, setStarting] = useState(false);
   const [answer, setAnswer] = useState('');
 
+  /* Skill 套路（对齐 LibTV 的 skill 市场） */
+  const [skills, setSkills] = useState([]);
+  const [skillMeta, setSkillMeta] = useState({ categories: [], kinds: [] });
+  const [skillKind, setSkillKind] = useState('全部');
+  const [skillCat, setSkillCat] = useState('全部');
+  const [pickedSkill, setPickedSkill] = useState(null);   // 已套用的 Skill（含渲染结果）
+
   const [run, setRun] = useState(null);             // 运行详情（含 steps）
   const [pendingAsk, setPendingAsk] = useState(null);
   const [expanded, setExpanded] = useState({});     // seq -> 完整观察文本
@@ -150,6 +157,34 @@ export default function AgentView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Skill 套路库
+  useEffect(() => {
+    (async () => {
+      try {
+        const [list, meta] = await Promise.all([api.listSkills(), api.skillMeta()]);
+        setSkills(list);
+        setSkillMeta(meta);
+      } catch { /* Skill 不可用不影响 Agent 主体功能 */ }
+    })();
+  }, []);
+
+  const shownSkills = useMemo(() => skills.filter((s) => (
+    (skillKind === '全部' || s.kind === skillKind) && (skillCat === '全部' || s.category === skillCat)
+  )), [skills, skillKind, skillCat]);
+
+  /* 套用 Skill：按当前剧本渲染目标文案，并把风格/岗位/参数一起带过来 */
+  const useSkill = async (s) => {
+    try {
+      const rendered = await api.applySkill(s.id, { scriptId: script?.id });
+      setPickedSkill({ ...rendered, skill: s, agentName: rendered.agentName, agentId: s.spec?.agentName });
+      setGoal(rendered.goal || '');
+      // 套路指定了岗位就自动切过去
+      const target = agents.find((a) => a.name === rendered.agentName);
+      if (target) setAgentId(target.id);
+      notify(`已套用「${s.title}」：目标与参数已填好`);
+    } catch (e) { notify(e.message, true); }
+  };
+
   // 切换剧本 / 首次进入：接上最近一次运行（运行中则实时续流，已结束则作为回放），
   // 保证刷新页面不丢现场。想开新任务点运行台的「↺ 新任务」。
   useEffect(() => {
@@ -179,10 +214,12 @@ export default function AgentView() {
   const start = async () => {
     if (!agent) return notify('请先在左侧选择一个岗位', true);
     if (!script) return notify('请先创建或选择剧本', true);
-    if (!goal.trim()) return notify('请先用一句话描述这次的目标', true);
+    if (!goal.trim()) return notify('请先用一句话描述这次的目标，或选一个 Skill 套路', true);
     setStarting(true);
     try {
-      const r = await api.startAgentRun({ agentId: agent.id, scriptId: script.id, goal: goal.trim() });
+      const r = await api.startAgentRun({
+        agentId: agent.id, scriptId: script.id, goal: goal.trim(), skillId: pickedSkill?.skillId || undefined,
+      });
       setGoal('');
       await openRun(r.runId);
     } catch (e) { notify(e.message, true); } finally { setStarting(false); }
@@ -223,8 +260,14 @@ export default function AgentView() {
     } catch { setExpanded((e) => ({ ...e, [s.seq]: '(详情加载失败)' })); }
   };
 
-  const removeAgent = async (a) => {
-    if (!window.confirm(`删除岗位「${a.name}」？（不影响已完成的运行记录）`)) return;
+  /* 从运行台回到启动台并提示 Skill 库 */
+  const openSkillHint = () => {
+    setRun(null);
+    setPendingAsk(null);
+    notify('已回到启动台：可挑一个 Skill 套路，也可以直接写目标');
+  };
+
+  const removeAgent = async (a) => {    if (!window.confirm(`删除岗位「${a.name}」？（不影响已完成的运行记录）`)) return;
     try {
       await api.deleteAgent(a.id);
       const list = await api.listAgents();
@@ -302,7 +345,66 @@ export default function AgentView() {
         {!run ? (
           /* ---- 待启动 ---- */
           <div className="ag-launch">
-            <div className="empty-card" style={{ maxWidth: 640, margin: '40px auto' }}>
+            {/* Skill 套路库：一句话起步，或直接套一个套路 */}
+            <div className="ag-skills">
+              <div className="ag-skills-head">
+                <b>Skill 全开，故事走起</b>
+                <span className="hint">套一个套路：风格 / 镜头 / 步骤 / 提示词规范一次性带齐</span>
+                <span className="spacer" />
+                <div className="ag-skills-tabs">
+                  {['全部', ...(skillMeta.kinds || [])].map((k) => (
+                    <button key={k} className={`ag-skill-tab ${skillKind === k ? 'on' : ''}`} onClick={() => setSkillKind(k)}>
+                      {k === 'video' ? '视频' : k === 'image' ? '图片' : k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="ag-skills-cats">
+                {['全部', ...(skillMeta.categories || [])].map((c) => (
+                  <button key={c} className={`ag-cat ${skillCat === c ? 'on' : ''}`} onClick={() => setSkillCat(c)}>{c}</button>
+                ))}
+              </div>
+              <div className="ag-skills-grid">
+                {!shownSkills.length && <div className="ag-empty">该分类下还没有 Skill</div>}
+                {shownSkills.map((s) => (
+                  <div key={s.id} className={`ag-skill ${pickedSkill?.skillId === s.id ? 'on' : ''}`}>
+                    <span className="ag-skill-avatar">{s.avatar || s.title.slice(0, 2)}</span>
+                    <div className="ag-skill-body">
+                      <div className="ag-skill-title">
+                        <b>{s.title}</b>
+                        <code>/{s.command}</code>
+                        <span className={`ag-skill-kind ${s.kind}`}>{s.kind === 'image' ? '图片' : '视频'}</span>
+                      </div>
+                      <p className="ag-skill-sum">{s.summary}</p>
+                      <div className="ag-skill-meta">
+                        <span>{s.author}</span>
+                        <span>·</span>
+                        <span>{s.uses || 0} 次使用</span>
+                        {!!s.spec?.shots && <span>· {s.spec.shots} 镜 {s.spec.ratio}</span>}
+                        <span className="spacer" />
+                        <button className="ghost tiny" onClick={() => useSkill(s)}>
+                          {pickedSkill?.skillId === s.id ? '已套用' : '使用'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {pickedSkill && (
+                <div className="ag-picked">
+                  <span className="ag-picked-tag">已套用</span>
+                  <b>{pickedSkill.title}</b>
+                  <span className="hint">
+                    {pickedSkill.styleName && `风格 ${pickedSkill.styleName} · `}
+                    {pickedSkill.recipe?.length ? `${pickedSkill.recipe.length} 步流程` : ''}
+                  </span>
+                  <span className="spacer" />
+                  <button className="ghost tiny" onClick={() => { setPickedSkill(null); setGoal(''); }}>取消套用</button>
+                </div>
+              )}
+            </div>
+
+            <div className="empty-card" style={{ maxWidth: 640, margin: '18px auto 40px' }}>
               <h3>让 {agent ? `「${agent.name}」` : 'Agent'} 替你跑完这条流水线</h3>
               <p className="hint">
                 用一句话描述目标，例如「把当前剧本做成一集 8 镜的成片」。Agent 会自己查看现状、
@@ -332,13 +434,22 @@ export default function AgentView() {
               <span className={`dot ${run.status === 'running' ? 'run' : run.status === 'waiting' ? 'wait' : run.status === 'done' ? 'ok' : 'err'}`} />
               <b className="ag-goal" title={run.goal}>{run.goal}</b>
               <span className="pill">{runAgent ? runAgent.name : '岗位已删除'} · {STATUS_TEXT[run.status] || run.status}</span>
+              {run.skill_json && (() => {
+                try { const sk = JSON.parse(run.skill_json); return <span className="pill ag-skill-pill">Skill · {sk.title}</span>; }
+                catch { return null; }
+              })()}
               <span className="spacer" />
               <span className="pill">步 {doneSteps}/{budget.maxSteps}</span>
               <span className="pill">图 {cost.images || 0}/{budget.maxImages}</span>
               <span className="pill">片 {cost.videos || 0}/{budget.maxVideos}</span>
               {active
                 ? <button className="ghost" onClick={stop}>⏹ 停止</button>
-                : <button className="ghost" onClick={() => { setRun(null); setPendingAsk(null); }}>↺ 新任务</button>}
+                : (
+                  <>
+                    <button className="ghost" onClick={openSkillHint}>✨ Skill 套路</button>
+                    <button className="primary" onClick={() => { setRun(null); setPendingAsk(null); }}>＋ 新建任务</button>
+                  </>
+                )}
             </div>
 
             {run.error && <div className="ag-fatal">运行失败：{run.error}</div>}

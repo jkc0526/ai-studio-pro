@@ -6,6 +6,7 @@ import {
 } from '@xyflow/react';
 import { api } from '../api.js';
 import { CanvasCtx, useApp } from '../context.js';
+import { buildRefs } from '../refs.js';
 import TextNode from '../nodes/TextNode.jsx';
 import LlmNode from '../nodes/LlmNode.jsx';
 import ImageNode from '../nodes/ImageNode.jsx';
@@ -413,26 +414,12 @@ export default function CanvasView({ notify }) {
 
   /* 上游素材引用表：连线传进来的图片/视频按顺序编号（图片1..n / 视频1..n）。
      节点用它渲染「参考」缩略图行与 @ 引用，并写进 node.data.mediaRefs，
-     后端 engine.js 按同名 key 解析 @图片N，保证两端编号一致。 */
-  const refsOf = useCallback((nodeId) => {
-    const map = new Map(nodesRef.current.map((n) => [n.id, n]));
-    const ups = edgesRef.current
-      .filter((e) => e.target === nodeId && map.has(e.source))
-      .map((e) => map.get(e.source));
-    const refs = [];
-    let imgN = 0; let vidN = 0;
-    for (const up of ups) {
-      const d = up.data || {};
-      const isUpload = up.type === 'uploadNode' || up.type === 'assetNode';
-      const gridImg = Array.isArray(d.images) && d.images.length
-        ? d.images[Number.isInteger(d.pickedIndex) ? d.pickedIndex : d.images.length - 1] : null;
-      const vid = d.videoUrl || (isUpload && d.kind === 'video' ? d.url : null);
-      const img = d.imageUrl || gridImg || (isUpload && d.kind !== 'video' ? d.url : null);
-      if (vid) refs.push({ key: `视频${++vidN}`, type: 'video', url: vid, from: up.type, label: d.label || '' });
-      else if (img) refs.push({ key: `图片${++imgN}`, type: 'image', url: img, from: up.type, label: d.label || '' });
-    }
-    return refs;
-  }, []);
+     后端 engine.js 按同名 key 解析 @图片N，保证两端编号一致。
+     节点组件通过 useStore 订阅图结构，把最新的 nodes/edges 传进来（graph 参数），
+     不能只读 ref —— ref 在 effect 里更新，会有一帧延迟且节点不会重渲染。 */
+  const refsOf = useCallback((nodeId, graph) => (
+    buildRefs(nodeId, graph?.nodes || nodesRef.current, graph?.edges || edgesRef.current)
+  ), []);
 
   const ctx = useMemo(() => ({
     updateNode, deleteNode, runNode: (id) => run([id]), openSnippets, refsOf,

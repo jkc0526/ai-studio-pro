@@ -10,6 +10,7 @@ import * as ai from './ai.js';
 const { callLLM } = ai;
 import * as endpointMod from './endpoint.js';
 import * as agentsMod from './agents.js';
+import * as skillsMod from './skills.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -969,7 +970,29 @@ app.get('/api/agent-runs', wrap((req, res) => ok(res, agentsMod.listRuns({ scrip
 
 app.post('/api/agent-runs', wrap((req, res) => {
   const b = req.body || {};
-  ok(res, agentsMod.startRun({ agentId: b.agentId, scriptId: b.scriptId, goal: b.goal }));
+  ok(res, agentsMod.startRun({ agentId: b.agentId, scriptId: b.scriptId, goal: b.goal, skillId: b.skillId }));
+}));
+
+/* ---------------- Skill 应用（v0.7） ----------------
+   一套可复用的创作套路：风格 + 参数 + 步骤 recipe + 提示词增强 */
+app.get('/api/skills', wrap((req, res) => ok(res, skillsMod.listSkills({
+  category: req.query.category, kind: req.query.kind, q: req.query.q,
+}))));
+app.get('/api/skills/meta', wrap((req, res) => ok(res, skillsMod.skillCategories())));
+app.get('/api/skills/:id', wrap((req, res) => {
+  const s = skillsMod.getSkill(req.params.id) || skillsMod.getSkillByCommand(req.params.id);
+  if (!s) return fail(res, 'Skill 不存在', 404);
+  ok(res, s);
+}));
+app.post('/api/skills', wrap((req, res) => ok(res, skillsMod.upsertSkill(req.body || {}))));
+app.put('/api/skills/:id', wrap((req, res) => ok(res, skillsMod.upsertSkill(req.body || {}, req.params.id))));
+app.delete('/api/skills/:id', wrap((req, res) => ok(res, skillsMod.deleteSkill(req.params.id))));
+/** 套用预览：按当前剧本渲染出目标文案与参数，不产生任何花费 */
+app.post('/api/skills/:id/apply', wrap((req, res) => {
+  const skill = skillsMod.getSkill(req.params.id) || skillsMod.getSkillByCommand(req.params.id);
+  if (!skill) return fail(res, 'Skill 不存在', 404);
+  const script = req.body?.scriptId ? q.one('SELECT * FROM script WHERE id = ?', req.body.scriptId) : null;
+  ok(res, skillsMod.renderSkill(skill, { script, shots: req.body?.shots }));
 }));
 
 app.get('/api/agent-runs/:id', wrap((req, res) => {
