@@ -56,16 +56,41 @@ export default function App() {
     setStyleId((cur) => cur || list[0]?.id || '');
   }, []);
 
-  const loadModels = useCallback(async (purpose = 'thinking') => {
+  const loadModels = useCallback(async (purpose = 'all') => {
     try {
-      const m = await api.listModels(`purpose=${purpose}`);
+      if (purpose && purpose !== 'all') {
+        const m = await api.listModels(`purpose=${purpose}`);
+        setModelInfo((prev) => ({
+          list: m.list?.length ? m.list : prev.list,
+          groups: (m.groups?.text?.length || m.groups?.image?.length || m.groups?.video?.length) ? m.groups : prev.groups,
+          defaults: m.defaults || prev.defaults,
+          blocked: m.blocked || [],
+          source: m.source || prev.source,
+          error: m.error,
+        }));
+        return;
+      }
+      // 默认刷新三个用途，各自取对应 provider 的模型，避免视频节点下拉出现 thinking provider 的模型
+      const purposes = ['thinking', 'image_gen', 'video'];
+      const maps = { thinking: 'text', image_gen: 'image', video: 'video' };
+      const merged = { list: [], groups: { text: [], image: [], video: [] }, defaults: {}, blocked: [], sources: [] };
+      for (const p of purposes) {
+        const m = await api.listModels(`purpose=${p}`);
+        const kind = maps[p];
+        if (m.groups?.[kind]?.length) merged.groups[kind] = m.groups[kind];
+        if (m.defaults?.[kind]) merged.defaults[kind] = m.defaults[kind];
+        if (m.list?.length) merged.list = [...merged.list, ...m.list];
+        if (m.blocked?.length) merged.blocked = [...merged.blocked, ...m.blocked];
+        if (m.source) merged.sources.push(m.source);
+        if (m.error && !merged.error) merged.error = m.error;
+      }
       setModelInfo((prev) => ({
-        list: m.list?.length ? m.list : prev.list,
-        groups: (m.groups?.text?.length || m.groups?.image?.length || m.groups?.video?.length) ? m.groups : prev.groups,
-        defaults: m.defaults || prev.defaults,
-        blocked: m.blocked || [],
-        source: m.source || prev.source,
-        error: m.error,
+        list: merged.list.length ? [...new Set(merged.list)] : prev.list,
+        groups: (merged.groups.text.length || merged.groups.image.length || merged.groups.video.length) ? merged.groups : prev.groups,
+        defaults: Object.keys(merged.defaults).length ? merged.defaults : prev.defaults,
+        blocked: merged.blocked.length ? [...new Set(merged.blocked)] : prev.blocked,
+        source: merged.sources.length ? merged.sources.join(' / ') : prev.source,
+        error: merged.error,
       }));
     } catch { /* ignore */ }
   }, []);
