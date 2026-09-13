@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, useStore } from '@xyflow/react';
 import { useCanvas } from '../context.js';
+import MentionInput from '../components/MentionInput.jsx';
+import MediaPreview from '../components/MediaPreview.jsx';
 
 const STATUS_TEXT = { running: '生成中', done: '完成', error: '失败' };
 
@@ -28,8 +30,8 @@ const PLACEHOLDER = {
    提示词里用 @图片1 引用，生成时传给模型（后端 engine.js 按同名解析）。 */
 export default function VideoNode({ id, data, selected }) {
   const ctx = useCanvas();
-  const taRef = useRef(null);
-  const [mention, setMention] = useState(null);   // { query } 打开 @ 选择器
+  const [preview, setPreview] = useState(null);   // 点击缩略图放大
+  const miRef = useRef(null);                     // 富文本输入的命令式接口
 
   const mode = data.mode || 'text';
   const modeCfg = MODES.find((m) => m.v === mode) || MODES[0];
@@ -46,9 +48,6 @@ export default function VideoNode({ id, data, selected }) {
     [ctx, id, graphNodes, graphEdges]);
   const prompt = data.prompt || '';
   const usedKeys = useMemo(() => (prompt.match(/@\s*(?:图片|视频)\s*\d+/g) || []).map((s) => s.replace(/@\s*/, '').replace(/\s+/g, '')), [prompt]);
-  const mentionList = mention
-    ? refs.filter((r) => !mention.query || r.key.includes(mention.query) || (r.label || '').includes(mention.query))
-    : [];
 
   // 素材编号表同步给节点数据 → 后端按同样的 key 解析 @图片N
   useEffect(() => {
@@ -67,38 +66,6 @@ export default function VideoNode({ id, data, selected }) {
     ctx.runNode(id);
   };
 
-  const insertMention = (ref) => {
-    const ta = taRef.current;
-    const text = prompt;
-    const pos = ta?.selectionStart ?? text.length;
-    const before = text.slice(0, pos).replace(/@[^\s@]*$/, '');   // 抹掉半截 @ 查询
-    const after = text.slice(pos);
-    const next = `${before}@${ref.key} ${after}`;
-    ctx.updateNode(id, { prompt: next });
-    setMention(null);
-    requestAnimationFrame(() => {
-      const el = taRef.current;
-      if (!el) return;
-      const p = before.length + ref.key.length + 2;
-      el.focus(); el.setSelectionRange(p, p);
-    });
-  };
-
-  const onPromptChange = (e) => {
-    const v = e.target.value;
-    ctx.updateNode(id, { prompt: v });
-    const before = v.slice(0, e.target.selectionStart ?? v.length);
-    const m = before.match(/@([^\s@]*)$/);
-    setMention(m && refs.length ? { query: m[1] } : null);
-  };
-
-  const onKeyDown = (e) => {
-    if (mention) {
-      if (e.key === 'Escape') { e.preventDefault(); setMention(null); return; }
-      if (e.key === 'Enter' && mentionList.length) { e.preventDefault(); insertMention(mentionList[0]); return; }
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); gen(); }
-  };
   const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
 
   return (
@@ -128,13 +95,20 @@ export default function VideoNode({ id, data, selected }) {
       </div>
 
       <div className={`oii-card ${data.videoUrl ? 'has-media' : ''}`}>
-        {data.videoUrl
-          ? <video src={data.videoUrl} controls muted loop playsInline className="nodrag" />
-          : <span className="oii-ph">
-              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <path d="M3 7h11v10H3zM14 10l6-3v10l-6-3" />
-              </svg>
-            </span>}
+        {data.videoUrl ? (
+          <video src={data.videoUrl} controls muted loop playsInline className="nodrag" />
+        ) : data.status === 'running' ? (
+          <span className="oii-ph loading">
+            <span className="oii-spinner" />
+            <small>生成中…</small>
+          </span>
+        ) : (
+          <span className="oii-ph">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <path d="M3 7h11v10H3zM14 10l6-3v10l-6-3" />
+            </svg>
+          </span>
+        )}
         {/* 连接桩挂在卡片边缘的垂直中点 */}
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
@@ -160,55 +134,28 @@ export default function VideoNode({ id, data, selected }) {
             {refs.map((r) => (
               <button key={r.key} className={`oii-ref ${usedKeys.includes(r.key) ? 'on' : ''}`}
                 title={`@${r.key}${r.label ? ` · ${r.label}` : ''}（点击插入引用）`}
-                onClick={() => insertMention(r)}>
+                onClick={() => miRef.current?.insert(r.key)}>
                 {r.type === 'image'
                   ? <img src={r.url} alt="" />
                   : <video src={r.url} muted preload="metadata" />}
                 <b>{r.key}</b>
               </button>
             ))}
-            <span className="oii-refs-hint">输入 @ 可引用</span>
+            <span className="oii-refs-hint">输入 @ 可引用 · 点提示词里的缩略图放大</span>
           </div>
         )}
 
-        <div className="oii-prompt-box">
-          <textarea className="nodrag" rows={3} ref={taRef} value={prompt}
-            placeholder={PLACEHOLDER[mode]}
-            onChange={onPromptChange}
-            onKeyDown={onKeyDown}
-            onBlur={() => setTimeout(() => setMention(null), 150)} />
-
-          {mention && (
-            <div className="oii-mention">
-              {mentionList.length === 0 && <div className="oii-mention-empty">没有匹配的素材</div>}
-              {mentionList.map((r, i) => (
-                <button key={r.key} className={`oii-mention-item ${i === 0 ? 'first' : ''}`}
-                  onMouseDown={(e) => { e.preventDefault(); insertMention(r); }}>
-                  <span className="oii-mention-thumb">
-                    {r.type === 'image' ? <img src={r.url} alt="" /> : <video src={r.url} muted />}
-                  </span>
-                  <span className="oii-mention-label">{r.key}</span>
-                  {r.label && <span className="oii-mention-sub">{r.label}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 已引用素材 chip（图片带序号，方便核对第几张） */}
-        {usedKeys.length > 0 && (
-          <div className="oii-used nodrag">
-            {usedKeys.map((k, i) => {
-              const r = refs.find((x) => x.key === k);
-              return (
-                <span key={`${k}-${i}`} className="oii-used-chip">
-                  {r?.type === 'image' && <img src={r.url} alt="" />}
-                  @{k}
-                </span>
-              );
-            })}
-          </div>
-        )}
+        {/* 富文本输入：@图片N 会内联成缩略图，点击可放大 */}
+        <MentionInput
+          ref={miRef}
+          value={prompt}
+          onChange={(text) => ctx.updateNode(id, { prompt: text })}
+          refs={refs}
+          rows={3}
+          placeholder={PLACEHOLDER[mode]}
+          onPreview={(ref) => setPreview(ref)}
+          onSubmit={gen}
+        />
 
         <div className="oii-params">
           <select className="nodrag" value={data.modelId || ''} title="视频模型"
@@ -239,6 +186,8 @@ export default function VideoNode({ id, data, selected }) {
           </button>
         </div>
       </div>
+
+      <MediaPreview item={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

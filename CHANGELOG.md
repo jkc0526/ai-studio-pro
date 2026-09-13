@@ -1,5 +1,25 @@
 # 更新日志
 
+## v0.7.1 — 2026-09-13
+
+### 修复：视频节点提示词里的内联 @图片N 缩略图点击无法放大
+
+- 根因：`MentionInput` 通过原生 `addEventListener('mousedown')` 给每个 `contentEditable=false` 的 chip 绑事件，
+  这些子节点会被频繁重建，且 `contenteditable` 内部对非编辑子节点的鼠标事件处理不可靠，导致用户点击无反应。
+- 修复：改成**容器级事件委托**（React `onMouseDown` 挂在 `.mi-box` 上），通过 `e.target.closest('[data-mention]')` 找到 chip，
+  读取 `data-mention` 查表并打开 `MediaPreview` 放大预览。更稳定，且不受 chip 重建影响。
+- 新增回归测试：`test/chip-click-verify.mjs`，创建已连线的图片→视频节点，写入含 `@图片1` 的提示词，
+  用真实 CDP 鼠标点击内联缩略图，断言 `.mp-mask` 放大预览出现，7 项全绿。
+- UX 补强：视频节点在生成中（`status=running` 且无 `videoUrl`）时，卡片占位区不再只显示静态视频图标，
+  而是显示 spinner +「生成中…」文案，避免用户以为视频「该显示却没显示」。
+- 点击「参考」缩略图插入 @ 引用：修复 blur 后 `MentionInput` 丢失光标位置、导致插入位置错乱或失效的问题；
+  现在 blur 前记住 caret 偏移，`insert` 时先 focus 再恢复到原位，再插入 `@图片N `。
+- 验证：
+  - `chip-click-verify.mjs` 7/7 通过
+  - `ref-insert-verify.mjs` 7/7 通过
+  - `video-loading-verify.mjs` 4/4 通过
+  - 既有 `ref-live-verify.mjs` 11/11 通过，无回归
+
 ## v0.7.0 — 2026-09-13
 
 - 新增「Skill 套路」体系（对齐 LibTV 的 skill 市场）：一个 Skill = 风格 + 镜头参数 + 步骤 recipe + 提示词增强
