@@ -342,6 +342,36 @@ function isTransient(err) {
   return !!m;
 }
 
+/* ---------- 5.5 已完成节点复用（避免重复调用 API） ----------
+   点下游节点（如视频）生成时，上游已跑成功且已有产物的节点不再重复调用，
+   直接复用节点数据里存的结果。目标节点（用户主动点的那个）永远重新执行。 */
+function existingOutput(node) {
+  const d = node.data || {};
+  switch (node.type) {
+    case 'videoNode':
+      return d.videoUrl
+        ? { url: d.videoUrl, videoUrl: d.videoUrl, kind: 'video', text: d.prompt || d.videoUrl, extra: {} }
+        : null;
+    case 'imageNode':
+      return d.imageUrl
+        ? { url: d.imageUrl, imageUrl: d.imageUrl, kind: 'image', text: d.prompt || '', extra: { imageUrl: d.imageUrl } }
+        : null;
+    case 'gridNode':
+      if (!Array.isArray(d.images) || !d.images.length) return null;
+      return {
+        url: d.images[d.pickedIndex ?? d.images.length - 1],
+        images: d.images,
+        pickedIndex: d.pickedIndex ?? d.images.length - 1,
+        text: d.prompt || '',
+        extra: {},
+      };
+    case 'llmNode':
+      return d.output || d.text ? { text: d.output || d.text, extra: {} } : null;
+    default:
+      return null;
+  }
+}
+
 /* ---------- 6. 主调度 ---------- */
 export async function runWorkflow({ nodes = [], edges = [], targetIds = [], configs = {}, emitter = null }) {
   validateGraph(nodes, edges);
@@ -352,6 +382,8 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
   const patches = [];          // 给前端的增量更新
   const steps = [];            // 调度日志
   const errors = [];           // 错误聚合
+  // 与 topoStages 的 validTargets 保持一致：没传 targetIds 时全部算目标（不跳过）
+  const targetSet = new Set(targetIds.length ? targetIds : nodes.map((n) => n.id));
   let done = 0;
   const total = stages.reduce((s, x) => s + x.length, 0);
 
@@ -362,6 +394,20 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
 
     // 每个节点：先准备 ctx（上游输出 + 文本），再触发 running 事件
     const tasks = stageNodes.map((node) => {
+      // 已完成的上游依赖复用旧产物，不重复调 API（省钱省时；目标节点始终重跑）
+      if (!targetSet.has(node.id) && node.data?.status === 'done') {
+        const cached = existingOutput(node);
+        if (cached) {
+          outputs.set(node.id, cached);
+          done += 1;
+          steps.push({ nodeId: node.id, kind: node.type, stage: si, status: 'skipped', ms: 0 });
+          // 注意：cached 里也有 kind（媒体类型 image/video），必须后置覆盖，避免顶掉节点类型
+          emitter?.emitNode({ nodeId: node.id, ms: 0, stage: si, ...cached, kind: node.type, status: 'done' });
+          emitter?.emitProgress(done, total);
+          return Promise.resolve();
+        }
+      }
+
       const upList = incoming(nodes, edges, node.id);
       upList.forEach((u) => { u.output = outputs.get(u.node.id) || null; });
       const ctx = {
@@ -424,7 +470,9 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
     await Promise.all(tasks);
   }
 
-  const status = errors.length ? (errors.length === steps.length ? 'failed' : 'partial') : 'success';
+  // 跳过的节点不算「实际执行过的步骤」，判定成败时排除，否则目标节点失败会被误判成 partial
+  const runSteps = steps.filter((s) => s.status !== 'skipped');
+  const status = errors.length ? (errors.length === runSteps.length ? 'failed' : 'partial') : 'success';
   return {
     status,
     error: errors[0]?.message || null,
