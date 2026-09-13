@@ -1,6 +1,6 @@
 /**
  * 图片节点 @ 引用（与视频节点对齐）：
- *  1. builtinSpec(kind=image) 带 vars.image 时请求体必须包含 image/image_url
+ *  1. builtinSpec(kind=image) 带 vars.image 时请求体包含 image（不再带 image_url，部分网关会拒绝）
  *  2. 不带时不包含（纯文生图行为不变）
  *  3. pickRefUrl / stripMentions 在图片节点场景下解析正确
  */
@@ -18,7 +18,7 @@ const withImg = builtinSpec({
 });
 check('url 指向 /images/generations', withImg.url === 'https://api.test.com/v1/images/generations');
 check('body 包含 image', withImg.body.image === '/outputs/med_1.png', JSON.stringify(withImg.body));
-check('body 包含 image_url（网关兼容字段）', withImg.body.image_url === '/outputs/med_1.png');
+check('body 不含 image_url（避免严格网关 400）', !('image_url' in withImg.body));
 check('prompt 不变', withImg.body.prompt === '把这只猫变成像素风');
 check('size 保留', withImg.body.size === '1024x1024');
 

@@ -98,7 +98,7 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
       url: `${base}/video/generations`,
       body: {
         model, prompt: vars.prompt,
-        ...(vars.image ? { image: vars.image, image_url: vars.image } : {}),
+        ...(vars.image ? { image: vars.image } : {}),
         ...(vars.duration ? { duration: vars.duration } : {}),
         ...(vars.ratio ? { aspect_ratio: vars.ratio } : {}),
       },
@@ -120,8 +120,8 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
       url: `${base}/images/generations`,
       body: {
         model, prompt: vars.prompt, n: 1,
-        // 参考图（@图片N 引用 / 上游连线）：与视频节点同款字段，编辑型模型（如 gemini-image）会消费
-        ...(vars.image ? { image: vars.image, image_url: vars.image } : {}),
+        // 参考图（@图片N 引用 / 上游连线）：只发标准 image 字段，部分网关会拒绝 image_url
+        ...(vars.image ? { image: vars.image } : {}),
         ...(vars.size ? { size: vars.size } : {}),
         response_format: 'b64_json',
       },
