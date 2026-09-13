@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Handle, Position, useStore } from '@xyflow/react';
 import { useCanvas } from '../context.js';
 import { api } from '../api.js';
+import MentionInput from '../components/MentionInput.jsx';
+import MediaPreview from '../components/MediaPreview.jsx';
 
 const STATUS_TEXT = { running: '生成中', done: '完成', error: '失败' };
 
@@ -29,15 +31,35 @@ const UPGRADES = [
   { key: 'panorama', label: '720°全景', icon: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM4 12h16M12 4c2 2.5 2 13.5 0 16' },
 ];
 
-/* 图片节点：浮动工具条 + 节点卡片 + 下方大输入框（对齐 OiiOii 截图） */
+const PLACEHOLDER = '描述任何你想要生成或编辑的内容（输入 @ 可引用上游素材）';
+
+/* 图片节点：浮动工具条 + 节点卡片 + 下方大输入框（与视频节点对齐的 @ 引用功能） */
 export default function ImageNode({ id, data, selected }) {
   const ctx = useCanvas();
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(null);   // 点击缩略图放大
+  const miRef = useRef(null);                     // 富文本输入的命令式接口
 
   const ratio = data.ratio || '16:9';
   const quality = data.quality || '1K';
   const models = ctx.imageModels || [];
+
+  /* 订阅 React Flow 的图结构：连线/上游节点产物变化时本节点会重渲染 */
+  const graphNodes = useStore((s) => s.nodes);
+  const graphEdges = useStore((s) => s.edges);
+  const refs = useMemo(() => ctx.refsOf?.(id, { nodes: graphNodes, edges: graphEdges }) || [],
+    [ctx, id, graphNodes, graphEdges]);
+  const prompt = data.prompt || '';
+  const usedKeys = useMemo(() => (prompt.match(/@\s*(?:图片|视频)\s*\d+/g) || []).map((s) => s.replace(/@\s*/, '').replace(/\s+/g, '')), [prompt]);
+
+  // 素材编号表同步给节点数据 → 后端按同样的 key 解析 @图片N（与视频节点一致）
+  useEffect(() => {
+    if (JSON.stringify(refs) !== JSON.stringify(data.mediaRefs || [])) {
+      ctx.updateNode(id, { mediaRefs: refs });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(refs)]);
 
   const pickFile = async (file) => {
     if (!file) return;
@@ -60,12 +82,8 @@ export default function ImageNode({ id, data, selected }) {
     ctx.runNode(id);
   };
 
-  const onKeyDown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); gen(); }
-  };
-
   return (
-    <div className={`oii-node ${selected ? 'on' : ''}`}>
+    <div className={`oii-node oii-node-image ${selected ? 'on' : ''}`}>
       {/* 浮动工具条（选中时出现在节点上方） */}
       {selected && (
         <div className="oii-toolbar nodrag">
@@ -124,10 +142,35 @@ export default function ImageNode({ id, data, selected }) {
 
       {/* 下方大输入框 */}
       <div className="oii-prompt">
-        <textarea className="nodrag" rows={3} value={data.prompt || ''}
-          placeholder="描述任何你想要生成或编辑的内容"
-          onChange={(e) => ctx.updateNode(id, { prompt: e.target.value })}
-          onKeyDown={onKeyDown} />
+        {/* 参考素材（连线传进来的图/视频）—— 点缩略图即插入 @ 引用 */}
+        {refs.length > 0 && (
+          <div className="oii-refs nodrag">
+            <span className="oii-refs-tag">参考</span>
+            {refs.map((r) => (
+              <button key={r.key} className={`oii-ref ${usedKeys.includes(r.key) ? 'on' : ''}`}
+                title={`@${r.key}${r.label ? ` · ${r.label}` : ''}（点击插入引用）`}
+                onClick={() => miRef.current?.insert(r.key)}>
+                {r.type === 'image'
+                  ? <img src={r.url} alt="" />
+                  : <video src={r.url} muted preload="metadata" />}
+                <b>{r.key}</b>
+              </button>
+            ))}
+            <span className="oii-refs-hint">输入 @ 可引用 · 点提示词里的缩略图放大</span>
+          </div>
+        )}
+
+        {/* 富文本输入：@图片N 会内联成缩略图，点击可放大 */}
+        <MentionInput
+          ref={miRef}
+          value={prompt}
+          onChange={(text) => ctx.updateNode(id, { prompt: text })}
+          refs={refs}
+          rows={3}
+          placeholder={PLACEHOLDER}
+          onPreview={(ref) => setPreview(ref)}
+          onSubmit={gen}
+        />
 
         <div className="oii-params">
           <select className="nodrag" value={data.modelId || ''} title="图像模型"
@@ -159,6 +202,8 @@ export default function ImageNode({ id, data, selected }) {
           </button>
         </div>
       </div>
+
+      <MediaPreview item={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

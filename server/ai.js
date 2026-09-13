@@ -62,9 +62,9 @@ export async function callLLM(arg, { model, system, user, maxTokens } = {}) {
 }
 
 /* ---------------- 图像 ---------------- */
-export async function callImage(arg, { model, prompt, size = '1024x1536' } = {}) {
+export async function callImage(arg, { model, prompt, image, size = '1024x1536' } = {}) {
   const t = resolveTarget('image', arg, { model });
-  const spec = specFor('image', t, { prompt, size, model: t.model });
+  const spec = specFor('image', t, { prompt, image, size, model: t.model });
   const out = await execute({ spec, apiKey: t.apiKey, kind: 'image' });
   return { url: out.url, model: t.model, raw: out.raw, polls: out.polls };
 }

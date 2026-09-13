@@ -170,32 +170,45 @@ check('缩略图编号为「图片1」', (await ev(`document.querySelector('.oii
 check('缩略图真的是图片', await ev(`!!document.querySelector('.oii-node-video .oii-ref img')`));
 await shot('test/shot-ref-row.png');
 
-// 点缩略图插入引用
+// 点缩略图插入引用（MentionInput 是 contenteditable，chip 需用 serialize 还原成 @图片N）
+const serializeBox = `(() => {
+  const el = document.querySelector('.oii-node-video .mi-box');
+  if (!el) return '';
+  let out = '';
+  for (const n of el.childNodes) {
+    if (n.nodeType === 3) out += n.textContent;
+    else if (n.nodeType === 1) out += n.dataset?.mention ? '@' + n.dataset.mention : n.textContent;
+  }
+  return out;
+})()`;
 await ev(`document.querySelector('.oii-node-video .oii-ref')?.click()`);
 await sleep(500);
-const promptVal = await ev(`document.querySelector('.oii-node-video textarea')?.value`);
+const promptVal = await ev(serializeBox);
 check('点缩略图插入 @图片1', (promptVal || '').includes('@图片1'), JSON.stringify(promptVal));
 console.log(`  [检查点2] 点缩略图后异常数 = ${errors.length}`);
-check('已引用 chip 出现', (await ev(`document.querySelectorAll('.oii-node-video .oii-used-chip').length`)) === 1);
+check('已引用内联 chip 出现', await ev(`!!document.querySelector('.oii-node-video .mi-chip[data-mention="图片1"]')`));
 check('缩略图高亮为已引用', await ev(`!!document.querySelector('.oii-node-video .oii-ref.on')`));
 
-// 输入 @ 唤起选择器
+// 输入 @ 唤起选择器（contenteditable 用 execCommand 走真实输入路径，中文输入法安全）
 await ev(`(() => {
-  const ta = document.querySelector('.oii-node-video textarea');
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-  setter.call(ta, ta.value + ' 男人 @');
-  ta.dispatchEvent(new Event('input', { bubbles: true }));
-  ta.focus();
+  const box = document.querySelector('.oii-node-video .mi-box');
+  box.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(box);
+  range.collapse(false);
+  sel.removeAllRanges(); sel.addRange(range);
+  document.execCommand('insertText', false, ' 男人 @');
   return true;
 })()`);
 await sleep(400);
-check('输入 @ 弹出选择器', await ev(`!!document.querySelector('.oii-mention')`));
-check('选择器里有候选', (await ev(`document.querySelectorAll('.oii-mention-item').length`)) >= 1);
+check('输入 @ 弹出选择器', await ev(`!!document.querySelector('.mi-picker')`));
+check('选择器里有候选', (await ev(`document.querySelectorAll('.mi-picker-item').length`)) >= 1);
 await shot('test/shot-ref-mention.png');
 /* 用真实鼠标事件点选择器（合成 MouseEvent 缺 view 会让 d3-drag 的 Pp(event.view) 抛错，
    那是测试脚本的问题，不是应用 bug） */
 const itemPos = JSON.parse(await ev(`(() => {
-  const el = document.querySelector('.oii-mention-item');
+  const el = document.querySelector('.mi-picker-item');
   if (!el) return 'null';
   const r = el.getBoundingClientRect();
   return JSON.stringify({ x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) });
@@ -206,8 +219,8 @@ if (itemPos) {
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: itemPos.x, y: itemPos.y, button: 'left', clickCount: 1 }, sessionId);
 }
 await sleep(500);
-check('选择器项可点击插入', (await ev(`document.querySelector('.oii-node-video textarea')?.value || ''`)).includes('@图片1'));
-check('选择器已关闭', !(await ev(`!!document.querySelector('.oii-mention')`)));
+check('选择器项可点击插入', (await ev(serializeBox) || '').includes('@图片1'));
+check('选择器已关闭', !(await ev(`!!document.querySelector('.mi-picker')`)));
 
 // mediaRefs 是否落库（自动保存）
 await sleep(2500);

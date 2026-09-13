@@ -1,5 +1,23 @@
 # 更新日志
 
+## v0.7.2 — 2026-09-13
+
+### 图片节点 @ 引用全链路打通（与视频节点对齐）
+
+- 图片节点的前端 @ 引用 UI（参考行 / 内联 chip / 选择器 / 点击放大）此前已就位，但有两处断点导致实际不生效：
+  1. **前端**：`ImageNode` 没把 `refs` 同步写进 `node.data.mediaRefs` → 后端 `pickRefUrl` 拿不到编号表。
+     补上与 `VideoNode` 一致的同步 effect。
+  2. **后端**：`builtinSpec(kind=image)` 构建请求体时丢掉了 `vars.image` —— 传了参考图但没发出去。
+     现在与视频同款：有参考图时 body 带 `image` + `image_url`（编辑型模型如 gemini-image 会消费）。
+- `imageNode` handler 的参考图 URL 加了与视频节点相同的协议白名单（http / data: / /outputs/）。
+- 回归：`ref-mention.mjs` 的 DOM 断言从旧版 textarea 选择器迁移到 MentionInput（`.mi-box` / `.mi-picker` / `.mi-chip`），
+  contenteditable 输入改用 `execCommand('insertText')` 走真实输入路径。
+
+### 测试
+
+- 新增 `test/image-mention.mjs` 12 项：image 请求体带/不带参考图、`pickRefUrl` / `stripMentions` / `mentionKeys` 图片节点场景
+- 全绿：ref-mention 29 / ref-insert 7 / chip-click 7 / ref-live 11，无回归
+
 ## v0.7.1 — 2026-09-13
 
 ### 修复：视频节点提示词里的内联 @图片N 缩略图点击无法放大

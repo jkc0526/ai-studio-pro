@@ -220,12 +220,15 @@ const HANDLERS = {
   async imageNode(node, ctx) {
     const prompt = buildPrompt(node, ctx.upstreamTexts);
     if (!prompt) throw new Error('提示词为空：请填写画面描述或连接上游节点');
+    // 与视频节点一致：@图片N 优先；没写 mention 时取上游最后一张图（向后兼容）
+    const imageUrl = pickRefUrl(node, node.data?.prompt || '', ctx.upstreamNodes, 'image');
     const r = await callImage(ctx.configs.image_gen, {
       model: node.data?.modelId,
-      prompt,
+      prompt: stripMentions(prompt),
+      image: imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/')) ? imageUrl : undefined,
       size: node.data?.size || '1024x1024',
     });
-    return { url: r.url, text: prompt, extra: { modelUsed: r.model } };
+    return { url: r.url, imageUrl: r.url, kind: 'image', text: prompt, extra: { modelUsed: r.model, imageUrl } };
   },
   async gridNode(node, ctx) {
     const prompt = buildPrompt(node, ctx.upstreamTexts);
