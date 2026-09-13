@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType,
+  ReactFlow, Background, BackgroundVariant, MiniMap, MarkerType,
   useNodesState, useEdgesState, addEdge, applyNodeChanges, applyEdgeChanges,
   useReactFlow,
 } from '@xyflow/react';
@@ -98,6 +98,11 @@ export default function CanvasView({ notify }) {
   const [snippetTarget, setSnippetTarget] = useState(null);
   const [menu, setMenu] = useState(null);
   const [palette, setPalette] = useState(null); // null | { flow: {x,y} }
+  /* 画布 chrome 开关（对齐 LibTV 左下控件条） */
+  const [snapGrid, setSnapGrid] = useState(true);
+  const [showMap, setShowMap] = useState(false);
+  const [hideEdges, setHideEdges] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -105,7 +110,7 @@ export default function CanvasView({ notify }) {
   const skipSave = useRef(true);
   const past = useRef([]);
   const future = useRef([]);
-  const { screenToFlowPosition, setViewport: setFlowViewport } = useReactFlow();
+  const { screenToFlowPosition, setViewport: setFlowViewport, fitView } = useReactFlow();
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
@@ -226,6 +231,38 @@ export default function CanvasView({ notify }) {
     }
     setNodes((nds) => nds.concat({ id: newId('n'), type, position, data: { ...defaults } }));
   }, [setNodes, screenToFlowPosition, pushHistory, freeSpot]);
+
+  /* 整理画布（对齐 LibTV 的 Alt+Shift+F）：按现有坐标的行列顺序，
+     把节点重新排到 560×440 的整齐网格上，消除重叠与参差。 */
+  const autoLayout = useCallback(() => {
+    const list = [...nodesRef.current];
+    if (list.length < 2) { notify('至少要有两个节点才需要整理'); return; }
+    pushHistory();
+    const cellW = 560; const cellH = 440;
+    const cols = Math.max(1, Math.round(Math.sqrt(list.length)));
+    const sorted = [...list].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
+    const originX = Math.min(...list.map((n) => n.position.x));
+    const originY = Math.min(...list.map((n) => n.position.y));
+    const posOf = new Map();
+    sorted.forEach((n, i) => {
+      posOf.set(n.id, {
+        x: Math.round(originX + (i % cols) * cellW),
+        y: Math.round(originY + Math.floor(i / cols) * cellH),
+      });
+    });
+    setNodes((nds) => nds.map((n) => (posOf.has(n.id) ? { ...n, position: posOf.get(n.id) } : n)));
+    setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
+    notify(`已整理 ${list.length} 个节点`);
+  }, [setNodes, pushHistory, notify, fitView]);
+
+  // Alt+Shift+F 快捷键（与 LibTV 一致）
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.altKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); autoLayout(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [autoLayout]);
 
   const run = useCallback(async (targetIds) => {
     const targets = targetIds?.length ? targetIds : [];
@@ -407,20 +444,25 @@ export default function CanvasView({ notify }) {
 
   return (
     <CanvasCtx.Provider value={ctx}>
-      <div className="view-bar">
-        <select style={{ width: 190 }} value={canvasId || ''} onChange={(e) => loadCanvas(e.target.value)}>
+      <div className="view-bar cv-topbar">
+        <span className="cv-brand">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M5 5h6v6H5zM13 5h6v6h-6zM9 13h6v6H9zM11 8h2M12 11v2" />
+          </svg>
+        </span>
+        <input className="cv-name" style={{ width: 160 }} value={title} placeholder="画布名称" onChange={(e) => setTitle(e.target.value)} />
+        <select className="cv-picker" style={{ width: 150 }} value={canvasId || ''} onChange={(e) => loadCanvas(e.target.value)}>
           {canvases.map((c) => <option key={c.id} value={c.id}>{c.title}（{c.node_count ?? 0} 节点）</option>)}
         </select>
-        <button onClick={() => createCanvas(false)}>新建</button>
-        <button onClick={() => createCanvas(true)}>示例画布</button>
-        <button onClick={removeCanvas}>删除</button>
+        <button className="ghost tiny" title="新建画布" onClick={() => createCanvas(false)}>＋</button>
+        <button className="ghost tiny" title="删除画布" onClick={removeCanvas}>×</button>
         <div className="sep" />
-        <input style={{ width: 150 }} value={title} placeholder="画布名称" onChange={(e) => setTitle(e.target.value)} />
-        <div className="sep" />
-        <button className="primary" onClick={() => setPalette({ flow: screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }) })}>+ 添加节点</button>
-        <div className="sep" />
-        <button onClick={undo}>撤销</button>
-        <button onClick={redo}>重做</button>
+        {/* 视图标签页（对齐 LibTV 的画布 / 工作流 / 故事板） */}
+        <div className="cv-tabs">
+          <button className="cv-tab on">画布</button>
+          <button className="cv-tab" title="剧本 → 脚本生成器" onClick={() => setView?.('production')}>工作流</button>
+          <button className="cv-tab" title="分镜表与批量出图出片" onClick={() => setView?.('storyboard')}>故事板</button>
+        </div>
         <div className="spacer" />
         {progress.total > 0 && running && (
           <span className="pill" style={{ minWidth: 120 }}>
@@ -430,8 +472,15 @@ export default function CanvasView({ notify }) {
             <span style={{ marginLeft: 6, fontSize: 12 }}>{progress.done}/{progress.total}</span>
           </span>
         )}
+        <button className="ghost tiny" title="撤销" onClick={undo} disabled={!history.length}>↶</button>
+        <button className="ghost tiny" title="重做" onClick={redo}>↷</button>
         <span className="pill">{savedAt ? `已保存 ${savedAt.toLocaleTimeString('zh-CN')}` : '未保存'}</span>
-        <button onClick={() => { setSnippetTarget(selectedIds[0] || null); setShowSnippets((v) => !v); }}>片段库</button>
+        <button className="ghost" title="打开 Agent 应用" onClick={() => setView?.('agents')}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ marginRight: 5, verticalAlign: -2 }}>
+            <path d="M12 2v3M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM9 12h.01M15 12h.01M9.5 16h5" />
+          </svg>
+          Agent
+        </button>
         <button className="primary" disabled={running} onClick={() => run(selectedIds.length ? selectedIds : [])}>
           {running ? '执行中…' : selectedIds.length ? '▶ 运行所选' : '▶ 运行全部'}
         </button>
@@ -441,7 +490,7 @@ export default function CanvasView({ notify }) {
         onClick={() => setMenu(null)} onDoubleClickCapture={onPaneDoubleClick}>
         <ReactFlow
           nodes={nodes}
-          edges={edges}
+          edges={hideEdges ? [] : edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -451,17 +500,119 @@ export default function CanvasView({ notify }) {
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={() => setPalette(null)}
           zoomOnDoubleClick={false}
+          snapToGrid={snapGrid}
+          snapGrid={[18, 18]}
           defaultViewport={viewport}
           fitView={false}
           proOptions={{ hideAttribution: true }}
           deleteKeyCode={['Backspace', 'Delete']}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#dfe3e8" />
-          <Controls />
-          <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ background: '#fff' }} />
+          {showMap && <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ background: '#fff' }} />}
         </ReactFlow>
 
-        {!nodes.length && <div className="center-hint">画布是空的 — 双击空白处打开「添加节点」面板，或拖入图片/视频</div>}
+        {/* 空画布引导（对齐 LibTV：双击提示 + 快捷卡片） */}
+        {!nodes.length && (
+          <div className="cv-empty">
+            <div className="cv-empty-tip">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M4 3l7 17 2.5-6.5L20 11z" />
+              </svg>
+              双击画布 · 自由生成节点
+            </div>
+            <div className="cv-empty-cards">
+              <button className="cv-ecard e0" onClick={() => setView?.('production')}>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M6 3h9l5 5v13H6zM15 3v5h5" />
+                </svg>
+                <b>故事脚本生成</b>
+              </button>
+              <button className="cv-ecard e1" onClick={() => setView?.('characters')}>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0" />
+                </svg>
+                <b>角色三视图</b>
+              </button>
+              <button className="cv-ecard e2" onClick={() => addNode('imageNode')}>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5" />
+                </svg>
+                <b>图片生成</b>
+              </button>
+              <button className="cv-ecard e3" onClick={() => addNode('videoNode')}>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M3 7h11v10H3zM14 10l6-3v10l-6-3" />
+                </svg>
+                <b>图生视频</b>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 底部居中悬浮工具条（对齐 LibTV） */}
+        <div className="cv-dock">
+          <button className="cv-dock-btn on" title="添加节点"
+            onClick={() => setPalette({ flow: screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 }) })}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="适应视图" onClick={() => fitView({ padding: 0.2, duration: 300 })}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="片段库（提示词模板）"
+            onClick={() => { setSnippetTarget(selectedIds[0] || null); setShowSnippets((v) => !v); }}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="素材库" onClick={() => setView?.('media')}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18v12H3zM8 6l1.5-2h5L16 6M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="角色库" onClick={() => setView?.('characters')}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="生成历史" onClick={() => setView?.('media')}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 8v4l3 2M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3 4v4h4" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="快捷键" onClick={() => setShowHelp(true)}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 7h16v10H4zM7 10h.01M10 10h.01M13 10h.01M16 10h.01M9 14h6" /></svg>
+          </button>
+          <button className="cv-dock-btn" title="教程（示例画布）" onClick={() => createCanvas(true)}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9a2.5 2.5 0 1 1 3 2.4V13M12 16h.01" /></svg>
+          </button>
+        </div>
+
+        {/* 左下控件条（对齐 LibTV） */}
+        <div className="cv-corner">
+          <span className="cv-corner-tag">{nodes.length} 节点</span>
+          <button className="cv-corner-btn" title="整理画布（Alt+Shift+F）" onClick={autoLayout}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 5h6v6H4zM14 5h6v6h-6zM4 13h6v6H4zM14 13h6v6h-6z" /></svg>
+          </button>
+          <button className={`cv-corner-btn ${showMap ? 'on' : ''}`} title="切换小地图" onClick={() => setShowMap((v) => !v)}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2zM9 4v14M15 6v14" /></svg>
+          </button>
+          <button className={`cv-corner-btn ${hideEdges ? 'on' : ''}`} title="隐藏节点连线" onClick={() => setHideEdges((v) => !v)}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 8h5a4 4 0 0 1 4 4 4 4 0 0 0 4 4h2" /><path d="M3 3l18 18" /></svg>
+          </button>
+          <button className={`cv-corner-btn ${snapGrid ? 'on' : ''}`} title="网格吸附" onClick={() => setSnapGrid((v) => !v)}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" /></svg>
+          </button>
+          <button className="cv-corner-btn" title="适应视图并重置缩放" onClick={() => fitView({ padding: 0.2, duration: 300 })}>
+            {Math.round((viewport?.zoom || 1) * 100)}%
+          </button>
+        </div>
+
+        {showHelp && (
+          <div className="panel cv-help" style={{ left: 16, top: 70, width: 260 }}>
+            <h3>快捷键与操作<span className="ghost tiny" style={{ cursor: 'pointer' }} onClick={() => setShowHelp(false)}>×</span></h3>
+            <div className="panel-body" style={{ fontSize: 12, lineHeight: 1.9 }}>
+              <div><b>双击空白</b> 打开「添加节点」面板</div>
+              <div><b>拖入文件</b> 直接生成上传节点</div>
+              <div><b>Ctrl + Enter</b> 在节点内触发生成</div>
+              <div><b>Alt + Shift + F</b> 整理画布</div>
+              <div><b>Delete / Backspace</b> 删除选中节点</div>
+              <div><b>连线</b> 图片 → 视频可传递首帧参考</div>
+              <div><b>运行</b> 先跑上游，再跑选中节点</div>
+            </div>
+          </div>
+        )}
 
         {menu && (
           <div className="panel" style={{ left: menu.x, right: 'auto', top: menu.y, width: 200 }}>

@@ -1,29 +1,32 @@
-# ä¾èµ–ä¸æ„å»ºäº§ç‰©
+# ÒÀÀµÓë¹¹½¨²úÎï
 node_modules/
 dist/
 release/
 
-# è¿è¡Œæ—¶æ•°æ®ï¼ˆå«æ•°æ®åº“ã€ç”Ÿæˆäº§ç‰©ã€å¯†é’¥ï¼Œç»ä¸å…¥åº“ï¼‰
+# ÔËĞĞÊ±Êı¾İ£¨º¬Êı¾İ¿â¡¢Éú³É²úÎï¡¢ÃÜÔ¿£¬¾ø²»Èë¿â£©
 data/
 WeaveCanvas-data/
 
-# æœ¬åœ°ç¼“å­˜ä¸ä¸´æ—¶æ–‡ä»¶
+# ±¾µØ»º´æÓëÁÙÊ±ÎÄ¼ş
 .vite/
 *.log
 npm-debug.log*
 .cache/
 
-# æµ‹è¯•æˆªå›¾
+# ²âÊÔ½ØÍ¼
 screenshot-*.png
+test/shot-*.png
+test/*.out.txt
+test/*.txt
 
-# ç¼–è¾‘å™¨ / ç³»ç»Ÿ
+# ¶Ô±ê¿±²ì²úÎï
+study-libtv-*.png
+study-libtv-*.txt
+study-libtv2.json
+test/libtv-*.json
+
+# ±à¼­Æ÷ / ÏµÍ³
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
-# æµ‹è¯•äº§ç‰©æˆªå›¾
-test/shot-*.png
-
-# ²âÊÔ±¨¸æ²úÎï
-test/*.out.txt
