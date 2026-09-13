@@ -1,5 +1,19 @@
 # 更新日志
 
+## v0.7.5 — 2026-09-13
+
+### 点下游节点生成时跳过已完成的上游（不再重复生图）
+
+用户反馈：点「生成视频」会把上游图片节点也重跑一遍，白白消耗额度。
+
+- `engine.js` 新增 `existingOutput()`：从 `node.data` 复原 imageNode / videoNode / gridNode / llmNode 的产物
+- 主调度：非目标节点且 `data.status === 'done'` 且有产物 → 标记 `skipped`，复用旧输出，
+  并回吐 `done` 事件（带 imageUrl / videoUrl），前端状态不会卡在 running
+- **目标节点（用户主动点的那个）永远重新执行**
+- 不传 `targetIds`（全跑）时不跳过，保持原有语义
+- 成败判定改用 `runSteps`（排除 skipped），避免目标失败被误判成 partial
+- 新增 `test/engine-skip-verify.mjs`：本地 mock 网关 + 5 组场景，15/15 通过
+
 ## v0.7.4 — 2026-09-13
 
 ### 视频请求体移除 duration 字段
