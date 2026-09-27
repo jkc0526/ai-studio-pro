@@ -22,7 +22,9 @@ const updater = createUpdaterController({
 
 ipcMain.handle('weave-updates:get-version', () => app.getVersion());
 ipcMain.handle('weave-updates:get-status', () => updater.getStatus());
+ipcMain.handle('weave-updates:get-recent-releases', () => updater.getRecentReleases());
 ipcMain.handle('weave-updates:check', () => updater.check());
+ipcMain.handle('weave-updates:download', () => updater.download());
 ipcMain.handle('weave-updates:install', () => updater.install());
 
 async function resolveDataDir() {

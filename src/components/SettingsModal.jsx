@@ -27,6 +27,25 @@ function ModelKindIcon({ kind }) {
   return <svg {...shared}><path d="M5 6h14M5 12h14M5 18h9" /></svg>;
 }
 
+function ReleaseNotesBody({ notes }) {
+  const lines = String(notes || '暂无更新说明').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return <p>暂无更新说明</p>;
+  return lines.map((line, index) => {
+    const heading = line.match(/^#{1,6}\s+(.+)/);
+    const bullet = line.match(/^(?:[-*]|\d+\.)\s+(.+)/);
+    if (heading) return <strong className="update-release-subheading" key={index}>{heading[1]}</strong>;
+    if (bullet) return <p className="update-release-bullet" key={index}><span aria-hidden="true">•</span>{bullet[1]}</p>;
+    return <p key={index}>{line}</p>;
+  });
+}
+
+function formatReleaseDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
 export default function SettingsModal({ open, onClose, notify }) {
   const [tab, setTab] = useState('source');
   const [purposeTab, setPurposeTab] = useState('thinking');
@@ -45,6 +64,8 @@ export default function SettingsModal({ open, onClose, notify }) {
   const configFileRef = useRef(null);
   const [appVersion, setAppVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState({ state: 'idle' });
+  const [recentReleases, setRecentReleases] = useState([]);
+  const [recentReleasesState, setRecentReleasesState] = useState('idle');
 
   const load = useCallback(async () => {
     const [cfg, pv, ca, pr] = await Promise.all([
@@ -86,6 +107,19 @@ export default function SettingsModal({ open, onClose, notify }) {
         setUpdateStatus(status || { state: 'idle' });
       })
       .catch(() => {});
+    if (typeof window.weaveUpdates.getRecentReleases === 'function') {
+      setRecentReleasesState('loading');
+      window.weaveUpdates.getRecentReleases()
+        .then((releases) => {
+          if (!active) return;
+          const list = Array.isArray(releases) ? releases.slice(0, 3) : [];
+          setRecentReleases(list);
+          setRecentReleasesState(list.length ? 'ready' : 'empty');
+        })
+        .catch(() => { if (active) setRecentReleasesState('error'); });
+    } else {
+      setRecentReleasesState('unavailable');
+    }
     return () => { active = false; unsubscribe?.(); };
   }, [open]);
 
@@ -100,6 +134,7 @@ export default function SettingsModal({ open, onClose, notify }) {
     }
     try {
       if (updateStatus.state === 'downloaded') await window.weaveUpdates.install();
+      else if (updateStatus.state === 'available') await window.weaveUpdates.download();
       else await window.weaveUpdates.check();
     } catch (error) {
       setUpdateStatus({ state: 'error', message: error.message || '更新操作失败' });
@@ -108,8 +143,20 @@ export default function SettingsModal({ open, onClose, notify }) {
 
   const updateButtonText = ({
     idle: '检查更新', checking: '正在检查…', downloading: `正在下载${Number.isFinite(updateStatus.percent) ? ` ${updateStatus.percent}%` : '…'}`,
+    available: updateStatus.version ? `下载更新 v${updateStatus.version}` : '下载更新',
     downloaded: '重启并安装', 'up-to-date': '已是最新版本', unavailable: '仅桌面版支持', error: '重试检查',
   }[updateStatus.state] || '检查更新');
+
+  const updateStatusMessage = ({
+    idle: '点击检查更新；发现新版本后，再点击下载。',
+    checking: '正在检查是否有新版本…',
+    available: `发现新版本 v${updateStatus.version || ''}，再次点击按钮开始下载。`,
+    downloading: `正在下载${updateStatus.version ? ` v${updateStatus.version}` : '更新'}${Number.isFinite(updateStatus.percent) ? `（${updateStatus.percent}%）` : '…'}`,
+    downloaded: `新版本${updateStatus.version ? ` v${updateStatus.version}` : ''}已下载，点击重启并安装。`,
+    'up-to-date': '当前已是最新版本。',
+    unavailable: updateStatus.message || '请在已安装的 Windows 桌面版中使用更新。',
+    error: updateStatus.message || '更新检查失败，请重试。',
+  }[updateStatus.state] || '');
 
   const saveAll = async () => {
     setBusy('save');
@@ -327,14 +374,11 @@ export default function SettingsModal({ open, onClose, notify }) {
           <div className="model-card-icon">W</div>
           <div className="model-card-heading">
             <b>WeaveCanvas 桌面版</b>
-            <span className="hint">
-              {appVersion ? `当前版本 v${appVersion}` : '桌面应用更新'}
-              {updateStatus.state === 'error' && updateStatus.message ? ` · ${updateStatus.message}` : ''}
-              {updateStatus.state === 'unavailable' && updateStatus.message ? ` · ${updateStatus.message}` : ''}
-            </span>
+            <span className="hint">{appVersion ? `当前版本 v${appVersion}` : '桌面应用更新'}</span>
+            <span className="update-status-message" role="status" aria-live="polite">{updateStatusMessage}</span>
           </div>
           <span className="spacer" />
-          <button className={updateStatus.state === 'downloaded' ? 'primary' : ''}
+          <button className={['available', 'downloaded'].includes(updateStatus.state) ? 'primary' : ''}
             onClick={updateAction}
             disabled={['checking', 'downloading', 'unavailable'].includes(updateStatus.state)}>
             {updateButtonText}
@@ -342,6 +386,33 @@ export default function SettingsModal({ open, onClose, notify }) {
         </div>
 
         <div className="modal-body scroll">
+          <section className="update-release-history" aria-labelledby="update-release-title">
+            <div className="update-release-heading">
+              <div>
+                <b id="update-release-title">最近 3 次更新内容</b>
+                <span className="hint">只显示已正式发布的版本</span>
+              </div>
+              {recentReleasesState === 'loading' && <span className="hint" role="status">正在加载…</span>}
+            </div>
+            {recentReleasesState === 'error' && <p className="hint" role="status">暂时无法获取更新内容，请检查网络后重新打开设置。</p>}
+            {recentReleasesState === 'unavailable' && <p className="hint">更新记录仅在桌面版中提供。</p>}
+            {recentReleasesState === 'empty' && <p className="hint">暂时没有已发布的更新记录。</p>}
+            {recentReleasesState === 'ready' && (
+              <ol className="update-release-list">
+                {recentReleases.map((release) => (
+                  <li className="update-release-item" key={release.version}>
+                    <div className="update-release-meta">
+                      <b>{release.name || release.version}</b>
+                      <span>{release.version}</span>
+                      {formatReleaseDate(release.publishedAt) && <time>{formatReleaseDate(release.publishedAt)}</time>}
+                    </div>
+                    <div className="update-release-notes"><ReleaseNotesBody notes={release.notes} /></div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
           <div className="model-center-nav">
             <input ref={configFileRef} className="config-import-input" type="file" accept=".json,application/json" onChange={importConfiguration} />
             <div className="model-center-mode" role="tablist" aria-label="模型配置方式">

@@ -231,6 +231,21 @@ button.tiny { font-size: 11px; padding: 1px 6px; color: var(--muted); }
 .model-card-icon svg { width: 20px; height: 20px; }
 .model-card-heading { display: flex; flex-direction: column; gap: 3px; }
 .model-card-heading b { font-size: 15px; }
+.update-status-message { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.update-release-history { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.update-release-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.update-release-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.update-release-heading > div > b { font-size: 13px; }
+.update-release-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.update-release-item { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.update-release-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.update-release-meta b { font-size: 12px; }
+.update-release-meta > span, .update-release-meta time { color: var(--muted); font-size: 11px; }
+.update-release-notes { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.update-release-notes p { margin: 0; white-space: pre-wrap; }
+.update-release-subheading { margin-top: 3px; color: var(--text); font-size: 11px; }
+.update-release-bullet { display: flex; align-items: flex-start; gap: 6px; }
+.update-release-bullet span { flex: none; color: var(--accent); }
 .model-config-fields { margin-top: 2px; }
 .model-key-label-row { display: flex; align-items: center; gap: 6px; min-height: 18px; }
 .model-key-label-row .field-label { margin: 0; }

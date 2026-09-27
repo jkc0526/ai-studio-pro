@@ -8,6 +8,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 
 const main = fs.readFileSync(path.join(root, 'electron/main.js'), 'utf8');
 const preload = fs.readFileSync(path.join(root, 'electron/preload.cjs'), 'utf8');
 const settings = fs.readFileSync(path.join(root, 'src/components/SettingsModal.jsx'), 'utf8');
+const updater = fs.readFileSync(path.join(root, 'electron/updaterController.js'), 'utf8');
 
 assert.equal(packageJson.build?.win?.target?.[0]?.target, 'nsis',
   'Windows releases must use an auto-updatable NSIS installer');
@@ -19,9 +20,20 @@ assert.ok(packageJson.scripts?.publish && packageJson.scripts.publish.includes('
   'the publish script should upload release artifacts');
 assert.match(main, /preload:\s*path\.join\(__dirname, 'preload\.cjs'\)/,
   'the isolated preload should expose only updater IPC');
+assert.match(main, /weave-updates:download/);
+assert.match(main, /weave-updates:get-recent-releases/);
+assert.match(updater, /autoUpdater\.autoDownload\s*=\s*false/,
+  'checking for a release must not automatically start downloading it');
 assert.match(preload, /weave-updates:check/);
+assert.match(preload, /weave-updates:download/);
+assert.match(preload, /weave-updates:get-recent-releases/);
 assert.match(preload, /weave-updates:install/);
 assert.match(settings, /检查更新/);
+assert.match(settings, /发现新版本/);
+assert.match(settings, /下载更新/);
+assert.match(settings, /最近 3 次更新/);
+assert.match(settings, /window\.weaveUpdates\.download\(\)/,
+  'the available-update action should explicitly start a download only after a second click');
 assert.match(settings, /重启并安装/);
 
 const workflowPath = path.join(root, '.github', 'workflows', 'release.yml');

@@ -15,6 +15,9 @@ assert.match(settings, /htmlFor=\{`model-id-\$\{p\.key\}`\}/, 'model input must 
 assert.match(settings, /htmlFor=\{`base-url-\$\{p\.key\}`\}/, 'base URL input must have a programmatic label');
 assert.match(settings, /导入配置/, 'settings should offer one-click configuration import');
 assert.match(settings, /导出配置/, 'settings should offer configuration export');
+assert.match(settings, /最近 3 次更新内容/, 'settings should show the three most recent release notes');
+assert.match(settings, /update-release-list/, 'release notes should be rendered as a readable list');
+assert.match(settings, /发现新版本/, 'the update panel should tell users when a new version is available');
 assert.match(settings, /safeConfig = \{/, 'imports must be rebuilt from an allowlist before leaving the renderer');
 assert.match(settings, /safeBaseUrl/, 'credential-like URL query strings must not be sent during import');
 assert.match(settings, /API Key 未导入/, 'the UI should explain that credentials need to be added separately');
