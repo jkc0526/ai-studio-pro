@@ -59,11 +59,31 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
-          $installer = "WeaveCanvas Setup $version.exe"
+          $sourceInstaller = Join-Path 'release/installers' "WeaveCanvas Setup $version.exe"
+          $sourceBlockmap = "$sourceInstaller.blockmap"
+          $metadataPath = Join-Path 'release/installers' 'latest.yml'
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw
+          $pathMatch = [regex]::Match($metadata, '(?m)^path:\s*["'']?([^"''\r\n]+)')
+          if (-not $pathMatch.Success) {
+            $pathMatch = [regex]::Match($metadata, '(?m)^\s*-\s+url:\s*["'']?([^"''\r\n]+)')
+          }
+          if (-not $pathMatch.Success) {
+            throw 'Could not determine the installer filename referenced by latest.yml.'
+          }
+          $installer = [IO.Path]::GetFileName([Uri]::UnescapeDataString($pathMatch.Groups[1].Value.Trim()))
+          $blockmap = "$installer.blockmap"
+          $installerPath = Join-Path 'release/installers' $installer
+          $blockmapPath = Join-Path 'release/installers' $blockmap
+          if ((-not (Test-Path -LiteralPath $installerPath)) -and (Test-Path -LiteralPath $sourceInstaller)) {
+            Copy-Item -LiteralPath $sourceInstaller -Destination $installerPath
+          }
+          if ((-not (Test-Path -LiteralPath $blockmapPath)) -and (Test-Path -LiteralPath $sourceBlockmap)) {
+            Copy-Item -LiteralPath $sourceBlockmap -Destination $blockmapPath
+          }
           $assetPaths = @(
-            (Join-Path 'release/installers' $installer),
-            (Join-Path 'release/installers' "$installer.blockmap"),
-            (Join-Path 'release/installers' 'latest.yml')
+            $installerPath,
+            $blockmapPath,
+            $metadataPath
           )
           foreach ($assetPath in $assetPaths) {
             if (-not (Test-Path -LiteralPath $assetPath)) {
