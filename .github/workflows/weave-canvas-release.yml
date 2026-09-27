@@ -1,0 +1,55 @@
+name: WeaveCanvas Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: WeaveCanvas release tag (v0.7.x)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: startsWith(inputs.tag, 'v0.7.')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Validate release tag
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v0\.7\.\d+$') {
+            throw "Only WeaveCanvas v0.7.x tags are accepted."
+          }
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          if ("v$($package.version)" -ne $env:RELEASE_TAG) {
+            throw "Tag does not match package.json version."
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build installer and publish update assets
+        run: npx electron-builder --win nsis --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
