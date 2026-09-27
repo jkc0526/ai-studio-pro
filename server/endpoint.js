@@ -239,6 +239,16 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
   }
   if (kind === 'image') {
     const isAgnesImage = protocol === 'agnes-video' || /^agnes-image-/i.test(model || '');
+    const images = Array.isArray(vars.images) ? vars.images.filter(Boolean) : vars.image ? [vars.image] : [];
+    if (!isAgnesImage && images.length && /^gpt-image-/i.test(String(model || ''))) {
+      return {
+        method: 'POST',
+        url: `${base}/images/edits`,
+        body: { model, prompt: vars.prompt, n: 1, ...(vars.size ? { size: vars.size } : {}), images },
+        bodyFormat: 'multipart-image-edit',
+        resultType: 'auto',
+      };
+    }
     return {
       method: 'POST',
       url: `${base}/images/generations`,
@@ -247,12 +257,12 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
             model, prompt: vars.prompt, n: 1,
             ...(vars.size ? { size: vars.size } : {}),
             // Agnes 图片编辑协议将参考图放入 extra_body.image 数组；本地引用在 execute 前编码成 Data URI。
-            ...(vars.image ? { extra_body: { image: [vars.image], response_format: 'url' } } : {}),
+            ...(images.length ? { extra_body: { image: images, response_format: 'url' } } : {}),
           }
         : {
             model, prompt: vars.prompt, n: 1,
             // 参考图（@图片N 引用 / 上游连线）：只发标准 image 字段，部分网关会拒绝 image_url
-            ...(vars.image ? { image: vars.image } : {}),
+            ...(images.length ? { image: images[0] } : {}),
             ...(vars.size ? { size: vars.size } : {}),
             response_format: 'b64_json',
           },
@@ -332,18 +342,40 @@ export function customSpec(row, vars) {
 /* ---------------- 执行 ---------------- */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function imageEditFormData(body = {}) {
+  const form = new FormData();
+  for (const key of ['model', 'prompt', 'n', 'size', 'quality', 'output_format', 'background']) {
+    if (body[key] !== undefined && body[key] !== null && body[key] !== '') form.append(key, String(body[key]));
+  }
+  const images = Array.isArray(body.images) ? body.images : body.image ? [body.image] : [];
+  if (!images.length) throw new Error('图片编辑至少需要一张参考图');
+  images.forEach((image, index) => {
+    const match = typeof image === 'string'
+      ? image.match(/^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/i)
+      : null;
+    if (!match) throw new Error('GPT Image 编辑需要可上传的本地图片；请重新上传这张参考图后重试');
+    const mime = match[1].toLowerCase();
+    const extension = mime === 'image/jpeg' ? 'jpg' : mime.slice('image/'.length);
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length) throw new Error('参考图数据为空，请重新上传后重试');
+    form.append('image[]', new Blob([bytes], { type: mime }), `reference-${index + 1}.${extension}`);
+  });
+  return form;
+}
+
 async function fetchJson(url, { method = 'POST', headers = {}, body, apiKey, timeout = 600000 }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   try {
     const res = await fetch(url, {
       method,
       headers: {
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         ...headers,
       },
-      body: body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body)),
+      body: body === undefined ? undefined : isFormData || typeof body === 'string' ? body : JSON.stringify(body),
       signal: ctrl.signal,
     });
     const text = await res.text();
@@ -400,9 +432,10 @@ async function materialize(value, kind) {
  * @returns {{kind:'text'|'media', text?:string, url?:string|null, raw:object, polls:number}}
  */
 export async function execute({ spec, apiKey, kind, retry429 = true }) {
-  const body = kind === 'image' || kind === 'video'
+  const encodedBody = kind === 'image' || kind === 'video'
     ? await encodeLocalImageReferences(spec.body, spec.referenceImageEncoding || 'data-uri', { bytes: 0 })
     : spec.body;
+  const body = spec.bodyFormat === 'multipart-image-edit' ? imageEditFormData(encodedBody) : encodedBody;
   let attempt = 0;
   let res;
   while (true) {

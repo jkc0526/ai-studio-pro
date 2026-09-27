@@ -25,19 +25,32 @@ if (isMainThread) {
   const { OUTPUT_DIR } = await import('../server/db.js');
   const { builtinSpec, execute } = await import('../server/endpoint.js');
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03]);
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x04, 0x05, 0x06]);
   await fs.writeFile(path.join(OUTPUT_DIR, 'reference.png'), png);
+  await fs.writeFile(path.join(OUTPUT_DIR, 'reference-cat.jpg'), jpeg);
   const received = [];
   const mock = http.createServer(async (req, res) => {
     if (req.method === 'POST') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
-      received.push({ path: req.url, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+      const contentType = req.headers['content-type'] || '';
+      const payload = Buffer.concat(chunks);
+      const body = contentType.startsWith('multipart/form-data;')
+        ? await new Response(payload, { headers: { 'content-type': contentType } }).formData()
+        : JSON.parse(payload.toString('utf8'));
+      received.push({ path: req.url, body });
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ url: `http://127.0.0.1:${mock.address().port}/result.mp4` }));
+      const resultName = req.url.endsWith('/images/edits') ? 'result.png' : 'result.mp4';
+      res.end(JSON.stringify({ url: `http://127.0.0.1:${mock.address().port}/${resultName}` }));
       return;
     }
-    res.setHeader('content-type', 'video/mp4');
-    res.end('mock-video');
+    if (req.url === '/result.png') {
+      res.setHeader('content-type', 'image/png');
+      res.end(png);
+    } else {
+      res.setHeader('content-type', 'video/mp4');
+      res.end('mock-video');
+    }
   });
   await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve));
   const baseURL = `http://127.0.0.1:${mock.address().port}/v1`;
@@ -70,12 +83,30 @@ if (isMainThread) {
     });
     await execute({ spec: genericImageSpec, apiKey: 'test-key', kind: 'image', retry429: false });
     assert.equal(received[3].body.image, `data:image/png;base64,${png.toString('base64')}`, 'other OpenAI-compatible image providers should retain the data URI field');
+
+    const gptImageEditSpec = builtinSpec({
+      kind: 'image', protocol: 'openai', baseURL, model: 'gpt-image-2-vi',
+      vars: { prompt: '让人物抱着猫', images: ['/outputs/reference.png', '/outputs/reference-cat.jpg'], size: '2048x1152' },
+    });
+    const editResult = await execute({ spec: gptImageEditSpec, apiKey: 'test-key', kind: 'image', retry429: false });
+    assert.equal(received[4].path, '/v1/images/edits', 'GPT Image reference requests should use the image-edit endpoint');
+    assert.equal(received[4].body.get('model'), 'gpt-image-2-vi');
+    assert.equal(received[4].body.get('prompt'), '让人物抱着猫');
+    assert.equal(received[4].body.get('size'), '2048x1152');
+    const editImages = received[4].body.getAll('image[]');
+    assert.equal(editImages.length, 2, 'all local references should be included as multipart image[] files');
+    assert.deepEqual(Buffer.from(await editImages[0].arrayBuffer()), png);
+    assert.deepEqual(Buffer.from(await editImages[1].arrayBuffer()), jpeg);
+    assert.match(String(editImages[0].type), /^image\/png$/);
+    assert.match(String(editImages[1].type), /^image\/jpeg$/);
+    assert.match(editResult.url, /^\/outputs\//);
+
     const traversalSpec = builtinSpec({
       kind: 'video', protocol: 'agnes-video', baseURL, model: 'agnes-video-2.5',
       vars: { prompt: 'x', mode: 'keyframe', firstFrame: '/outputs/../weave.db', seconds: 5 },
     });
     await assert.rejects(() => execute({ spec: traversalSpec, apiKey: 'test-key', kind: 'video', retry429: false }), /本地地址无效/);
-    assert.equal(received.length, 4, 'invalid paths must be rejected before contacting the model provider');
+    assert.equal(received.length, 5, 'invalid paths must be rejected before contacting the model provider');
     console.log('local reference image forwarding tests passed');
     parentPort.postMessage({ ok: true });
   } catch (error) {
