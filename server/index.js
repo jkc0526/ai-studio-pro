@@ -985,10 +985,11 @@ app.post('/api/models/probe', wrap(async (req, res) => {
 
   const results = {};
   for (const m of models) {
-    const key = `${kind}:${target.baseURL}:${m}`;
+    const key = `${kind}:${target.protocol}:${target.baseURL}:${m}`;
     const hit = probeCache.get(key);
-    if (hit && Date.now() - hit.at < 10 * 60 * 1000) { results[m] = hit.value; continue; }
-    const value = await endpointMod.probeModel({ kind, baseURL: target.baseURL, apiKey: target.apiKey, model: m });
+    const ttl = hit?.value?.state === 'limited' ? 30_000 : 10 * 60 * 1000;
+    if (hit && Date.now() - hit.at < ttl) { results[m] = hit.value; continue; }
+    const value = await endpointMod.probeModel({ kind, baseURL: target.baseURL, apiKey: target.apiKey, model: m, protocol: target.protocol });
     probeCache.set(key, { at: Date.now(), value });
     results[m] = value;
     if (/429/.test(value.detail || '')) await new Promise((r) => setTimeout(r, 1500));

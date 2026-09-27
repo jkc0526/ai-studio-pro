@@ -162,7 +162,7 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
     const hasSeconds = vars.seconds !== undefined && vars.seconds !== null && vars.seconds !== '';
     const secondsValue = Number(vars.seconds);
     const seconds = hasSeconds
-      ? String(Number.isFinite(secondsValue) ? Math.min(30, Math.max(4, Math.round(secondsValue))) : 5)
+      ? String(Number.isFinite(secondsValue) ? Math.min(12, Math.max(4, Math.round(secondsValue))) : 5)
       : undefined;
     const body = { model, prompt: vars.prompt, mode: vars.mode };
     if (seconds !== undefined) body.seconds = seconds;
@@ -178,6 +178,8 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
       method: 'POST',
       url: `${base}/videos`,
       body,
+      // 只有上游明确返回“视频队列已满”时才重新提交；成功接单后只轮询任务。
+      queueFullRetryDelays: [10_000, 20_000, 40_000],
       referenceImageEncoding: 'base64',
       resultType: 'url',
       idKeys: ['video_id', 'id', 'task_id'],
@@ -394,6 +396,13 @@ export function describeHttpError({ status, json, text }) {
   return `上游返回 ${status}：${msg}`;
 }
 
+function isVideoQueueFull({ status, json, text }) {
+  if (status !== 503) return false;
+  const detail = [json?.code, json?.error?.code, json?.message, json?.error?.message, text]
+    .filter(Boolean).join(' ');
+  return /\b(?:video[\s_-]*)?queue(?:[\s_-]+is)?[\s_-]+full\b/i.test(detail);
+}
+
 async function saveBinary(buf, ext) {
   const name = `${uid('med')}.${ext}`;
   fs.writeFileSync(path.join(OUTPUT_DIR, name), buf);
@@ -431,20 +440,32 @@ async function materialize(value, kind) {
  * 统一执行一次调用
  * @returns {{kind:'text'|'media', text?:string, url?:string|null, raw:object, polls:number}}
  */
-export async function execute({ spec, apiKey, kind, retry429 = true }) {
+export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueFull = retry429 }) {
   const encodedBody = kind === 'image' || kind === 'video'
     ? await encodeLocalImageReferences(spec.body, spec.referenceImageEncoding || 'data-uri', { bytes: 0 })
     : spec.body;
   const body = spec.bodyFormat === 'multipart-image-edit' ? imageEditFormData(encodedBody) : encodedBody;
-  let attempt = 0;
+  let rateLimitRetries = 0;
+  let queueFullRetries = 0;
   let res;
   while (true) {
     res = await fetchJson(spec.url, { method: spec.method, headers: spec.headers, body, apiKey });
     if (res.ok) break;
-    if (res.status === 429 && retry429 && attempt < 3) {
-      await sleep([8000, 20000, 40000][attempt]);
-      attempt++;
+    if (res.status === 429 && retry429 && rateLimitRetries < 3) {
+      await sleep([8000, 20000, 40000][rateLimitRetries]);
+      rateLimitRetries++;
       continue;
+    }
+    if (kind === 'video' && isVideoQueueFull(res) && Array.isArray(spec.queueFullRetryDelays)) {
+      if (retryQueueFull && queueFullRetries < spec.queueFullRetryDelays.length) {
+        await sleep(spec.queueFullRetryDelays[queueFullRetries]);
+        queueFullRetries++;
+        continue;
+      }
+      const retried = queueFullRetries ? `已自动重试 ${queueFullRetries} 次，` : '';
+      const error = new Error(`Agnes 视频队列已满，${retried}上游仍未接单；请稍后重试或切换视频模型。${describeHttpError(res)}`);
+      error.code = 'UPSTREAM_VIDEO_QUEUE_FULL';
+      throw error;
     }
     throw new Error(describeHttpError(res));
   }
@@ -545,6 +566,7 @@ export async function probeModel({ kind, baseURL, apiKey, model, protocol = 'ope
     if (res.status === 400 && /prompt is required|messages|required/i.test(text)) return { state: 'ok', detail: '可用' };
     if (/can only access models/i.test(text)) return { state: 'blocked', detail: '账号无此模型权限' };
     if (/model_not_found|No available channel/i.test(text)) return { state: 'blocked', detail: '该模型无可用通道' };
+    if (kind === 'video' && isVideoQueueFull(res)) return { state: 'limited', detail: '视频队列已满，稍后再试' };
     if (res.status === 401 || res.status === 403) return { state: 'blocked', detail: `鉴权失败（${res.status}）` };
     return { state: 'error', detail: `HTTP ${res.status}：${text.slice(0, 120)}` };
   } catch (e) {
