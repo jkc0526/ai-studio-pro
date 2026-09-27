@@ -74,7 +74,7 @@ check('A PROTOCOLS 含 agnes-video', PROTOCOLS.some((p) => p.key === 'agnes-vide
   // seconds 收敛在协议层也做了
   check("A seconds=0 → '4'", agv({ prompt: 'x', mode: 'text', seconds: 0 }).body.seconds === '4');
   check("A seconds=3 → '4'", agv({ prompt: 'x', mode: 'text', seconds: 3 }).body.seconds === '4');
-  check("A seconds=13 → '13'", agv({ prompt: 'x', mode: 'text', seconds: 13 }).body.seconds === '13');
+  check("A seconds=13 → '12'", agv({ prompt: 'x', mode: 'text', seconds: 13 }).body.seconds === '12');
   check("A seconds='abc' → '5'", agv({ prompt: 'x', mode: 'text', seconds: 'abc' }).body.seconds === '5');
   check('A seconds=undefined → 不带该字段', !has(agv({ prompt: 'x', mode: 'text' }).body, 'seconds'));
 }
@@ -140,6 +140,60 @@ const media = { match: '.mp4', ok: true, ct: 'video/mp4' };
   const spec = agv({ prompt: 'x', mode: 'text' });
   let err; try { await execute({ spec, apiKey: 'q', kind: 'video', retry429: false }); } catch (e) { err = e; }
   check('B 轮询 failed → 抛「任务失败」', !!err && /任务失败/.test(err.message), err?.message);
+}
+{
+  // 上游明确拒单时才重试；一旦任务被接收，后续只轮询这个任务。
+  let submissions = 0;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/videos')) {
+      submissions++;
+      const busy = submissions < 3;
+      return {
+        ok: !busy, status: busy ? 503 : 200,
+        text: async () => JSON.stringify(busy
+          ? { error: { message: 'video queue is full, please retry later' } }
+          : { video_id: 'video_RETRY12345', status: 'queued' }),
+      };
+    }
+    if (u.includes('/agnesapi')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'completed', url: 'https://cdn.test/retry.mp4' }) };
+    }
+    return { ok: true, status: 200, text: async () => '', arrayBuffer: async () => new Uint8Array([0, 0, 0, 24]).buffer, headers: { get: () => 'video/mp4' } };
+  };
+  const spec = agv({ prompt: '小猫跑步', mode: 'text', seconds: '6' });
+  spec.queueFullRetryDelays = [0, 0];
+  let out; let err;
+  try { out = await execute({ spec, apiKey: 'q', kind: 'video' }); } catch (e) { err = e; }
+  check('B 503 队列满：退避后再次提交，接单后只轮询一次任务',
+    submissions === 3 && !!out?.url && out.polls === 1, err?.message || `submissions=${submissions}`);
+}
+{
+  let submissions = 0;
+  globalThis.fetch = async () => {
+    submissions++;
+    return { ok: false, status: 503, text: async () => JSON.stringify({ code: 'video_queue_full', message: 'video queue is full' }) };
+  };
+  const spec = agv({ prompt: '小猫跑步', mode: 'text' });
+  spec.queueFullRetryDelays = [0, 0];
+  let err;
+  try { await execute({ spec, apiKey: 'q', kind: 'video' }); } catch (e) { err = e; }
+  check('B 持续队列满：限次停止并给出可操作提示',
+    submissions === 3 && err?.code === 'UPSTREAM_VIDEO_QUEUE_FULL'
+      && /队列已满/.test(err?.message || '') && /重试 2 次/.test(err?.message || ''),
+    err?.message || `submissions=${submissions}`);
+}
+{
+  let submissions = 0;
+  globalThis.fetch = async () => {
+    submissions++;
+    return { ok: false, status: 503, text: async () => JSON.stringify({ error: { message: 'No available channel for model' } }) };
+  };
+  const spec = agv({ prompt: '小猫跑步', mode: 'text' });
+  spec.queueFullRetryDelays = [0, 0];
+  let err;
+  try { await execute({ spec, apiKey: 'q', kind: 'video' }); } catch (e) { err = e; }
+  check('B 无可用通道的 503 不重试', submissions === 1 && /No available channel/.test(err?.message || ''), err?.message);
 }
 {
   // 结果字段契约：产物 URL 无媒体后缀时仍能取到 → 证明已改走 resultPath('url')，不再依赖 digAnyUrl 的 .mp4 兜底

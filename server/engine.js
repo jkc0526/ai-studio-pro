@@ -437,6 +437,7 @@ function withTimeout(fn, ms) {
 
 function isTransient(err) {
   if (!err) return false;
+  if (err.code === 'UPSTREAM_VIDEO_QUEUE_FULL') return false;
   if (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') return true;
   const msg = String(err.message || err);
   if (/timeout|ECONNRESET|ETIMEDOUT|fetch failed|aborted/i.test(msg)) return true;
@@ -537,7 +538,11 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
         return Promise.resolve();
       }
 
-      return withRetry(() => handler(node, ctx), { timeoutMs: perNodeTimeout(node) })
+      // 视频请求一旦被接单，重跑整个 handler 可能产生第二个收费任务。
+      return withRetry(() => handler(node, ctx), {
+        timeoutMs: perNodeTimeout(node),
+        retries: node.type === 'videoNode' ? 0 : MAX_RETRIES,
+      })
         .then((out) => {
           const ms = Date.now() - t0;
           outputs.set(node.id, out);
@@ -591,8 +596,8 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
 }
 
 function perNodeTimeout(node) {
-  // 视频节点普遍更慢，给 5 分钟；其他默认 90s
-  if (node.type === 'videoNode') return 300_000;
+  // Agnes 最长轮询约 6 分钟，加上队列满重试与产物下载，需留出足够时间。
+  if (node.type === 'videoNode') return 600_000;
   if (node.type === 'imageNode' || node.type === 'gridNode') return 120_000;
   return PER_NODE_TIMEOUT_MS;
 }
