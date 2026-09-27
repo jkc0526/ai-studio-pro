@@ -188,6 +188,13 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
         doneValues: ['completed', 'succeeded', 'success', 'done'],
         failValues: ['failed', 'error', 'canceled', 'cancelled'],
         resultPath: 'url',
+        resultPaths: [
+          'url', 'metadata.url', 'metadata.video_url', 'metadata.videoUrl',
+          'video_url', 'videoUrl', 'remixed_from_video_id', 'output_url',
+          'output.url', 'output.video_url', 'result.url', 'result.video_url',
+          'data.url', 'data.video_url', 'data.output.url',
+        ],
+        resultGracePolls: 5,
       },
     };
   }
@@ -446,9 +453,11 @@ export async function execute({ spec, apiKey, kind, retry429 = true }) {
   const urls = [spec.poll.url.replace('{{id}}', id), ...(spec.poll.extraUrls || []).map((u) => u.replace('{{id}}', id))];
   const deadline = Date.now() + spec.poll.interval * spec.poll.max;
   let polls = 0;
+  let completedWithoutResultPolls = 0;
   while (Date.now() < deadline) {
     await sleep(spec.poll.interval);
     polls++;
+    let completedWithoutResult = null;
     for (const u of urls) {
       const st = await fetchJson(u, { method: 'GET', apiKey });
       if (!st.ok || !st.json) continue;
@@ -456,15 +465,28 @@ export async function execute({ spec, apiKey, kind, retry429 = true }) {
       if (spec.poll.failValues.includes(status)) {
         throw new Error(`任务失败：${pick(st.json, 'error.message') || pick(st.json, 'fail_reason') || status || '未知原因'}`);
       }
-      const hit = spec.poll.resultPath ? pick(st.json, spec.poll.resultPath) : null;
+      const resultPaths = spec.poll.resultPaths?.length
+        ? spec.poll.resultPaths
+        : (spec.poll.resultPath ? [spec.poll.resultPath] : []);
+      const hit = resultPaths.map((resultPath) => pick(st.json, resultPath))
+        .find((value) => typeof value === 'string' && value.trim());
       const any = hit || digAnyUrl(st.json) || digAnyB64(st.json);
       if (any) {
         const url = await materialize(any, kind);
         return { kind: 'media', url, raw: st.json, polls, sourceUrl: typeof any === 'string' ? any : undefined };
       }
       if (spec.poll.doneValues.includes(status)) {
-        throw new Error(`任务标记为完成但没有结果地址（响应字段：${Object.keys(st.json).join(',')}）`);
+        completedWithoutResult = Object.keys(st.json);
       }
+    }
+    if (completedWithoutResult) {
+      completedWithoutResultPolls++;
+      const gracePolls = Math.max(1, Number(spec.poll.resultGracePolls) || 1);
+      if (completedWithoutResultPolls >= gracePolls) {
+        throw new Error(`任务标记为完成，但连续 ${completedWithoutResultPolls} 次查询没有结果地址（响应字段：${completedWithoutResult.join(',')}）`);
+      }
+    } else {
+      completedWithoutResultPolls = 0;
     }
   }
   throw new Error(`任务轮询超时（${polls} 次，任务号 ${id}）`);

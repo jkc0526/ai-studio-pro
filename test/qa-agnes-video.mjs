@@ -152,6 +152,55 @@ const media = { match: '.mp4', ok: true, ct: 'video/mp4' };
   check('B resultPath 取顶层 url：无媒体后缀也能取到（不再依赖 digAnyUrl 兜底）',
     !!out && out.sourceUrl === 'https://cdn.test/signed-output-without-extension', err?.message || JSON.stringify(out?.sourceUrl));
 }
+{
+  // Agnes 可能先返回 completed、下一轮才补齐地址；视频链接也可能是无扩展名的 metadata.url。
+  let pollCount = 0;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/videos')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ video_id: 'video_DELAY12345', status: 'queued' }) };
+    }
+    if (u.includes('/agnesapi')) {
+      pollCount++;
+      const json = pollCount === 1
+        ? { completed_at: 1, created_at: 1, error: null, expires_at: 2, id: 'video_DELAY12345', model: MODEL, object: 'video', progress: 100, status: 'completed' }
+        : { status: 'completed', metadata: { url: 'https://cdn.test/video/content?token=abc' } };
+      return { ok: true, status: 200, text: async () => JSON.stringify(json) };
+    }
+    return { ok: true, status: 200, text: async () => '', arrayBuffer: async () => new Uint8Array([0, 0, 0, 24]).buffer, headers: { get: () => 'video/mp4' } };
+  };
+  const spec = agv({ prompt: 'x', mode: 'text' });
+  spec.poll.interval = 5;
+  spec.poll.max = 20;
+  let out; let err;
+  try { out = await execute({ spec, apiKey: 'q', kind: 'video', retry429: false }); } catch (e) { err = e; }
+  check('B completed 暂无地址时继续轮询，并可从 metadata.url 取无后缀视频链接',
+    !!out && out.sourceUrl === 'https://cdn.test/video/content?token=abc' && pollCount === 2,
+    err?.message || `pollCount=${pollCount}, sourceUrl=${out?.sourceUrl}`);
+}
+{
+  let pollCount = 0;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/videos')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ video_id: 'video_EMPTY12345', status: 'queued' }) };
+    }
+    if (u.includes('/agnesapi')) {
+      pollCount++;
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'completed', progress: 100 }) };
+    }
+    return { ok: false, status: 404, text: async () => '{}' };
+  };
+  const spec = agv({ prompt: 'x', mode: 'text' });
+  spec.poll.interval = 10;
+  spec.poll.max = 100;
+  spec.poll.resultGracePolls = 3;
+  let err;
+  try { await execute({ spec, apiKey: 'q', kind: 'video', retry429: false }); } catch (e) { err = e; }
+  check('B completed 永久缺少地址时经过限定重试后给出明确错误',
+    !!err && /连续 3 次查询没有结果地址/.test(err.message) && pollCount === 3,
+    err?.message || `pollCount=${pollCount}`);
+}
 
 /* ============================================================
    C. runWorkflow 画布 videoNode（protocol=agnes-video）
