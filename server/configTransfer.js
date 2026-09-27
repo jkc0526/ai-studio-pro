@@ -48,7 +48,7 @@ function normalizeProvider(channel, fallback = {}) {
   };
 }
 
-function normalizeAiConfigs(value) {
+function normalizeAiConfigs(value, { withKeys = false } = {}) {
   if (!Array.isArray(value)) return [];
   const allowed = new Set(['thinking', 'image_gen', 'video']);
   return value.slice(0, 20).map((row) => {
@@ -59,6 +59,8 @@ function normalizeAiConfigs(value) {
       model_id: cleanModelId(row.model_id), provider_id: safeText(row.provider_id, 120),
       provider_name: safeText(row.provider_name, 120),
       custom_api_id: safeText(row.custom_api_id, 120),
+      // v0.7.9：仅管理员导出（schemaVersion 2）携带 API Key
+      ...(withKeys && safeText(row.api_key, 500) ? { api_key: safeText(row.api_key, 500) } : {}),
     };
   });
 }
@@ -81,9 +83,10 @@ export function normalizeConfigImport(raw) {
     return { format: 'infinite-canvas', providers, defaults };
   }
 
-  if (raw.app === 'weave-canvas' && raw.schemaVersion === 1) {
+  if (raw.app === 'weave-canvas' && (raw.schemaVersion === 1 || raw.schemaVersion === 2)) {
+    const schemaV2 = raw.schemaVersion === 2;
     const providers = Array.isArray(raw.providers) ? raw.providers.slice(0, 100) : [];
-    const aiConfigs = normalizeAiConfigs(raw.aiConfigs);
+    const aiConfigs = normalizeAiConfigs(raw.aiConfigs, { withKeys: schemaV2 });
     const safeProviders = providers.map((provider) => {
       if (!provider || typeof provider !== 'object') throw new Error('备份中的供应商配置无效');
       const name = safeText(provider.name, 120).trim();
@@ -94,6 +97,8 @@ export function normalizeConfigImport(raw) {
         name, protocol: ['openai', 'openai-video', 'agnes-video', 'anthropic', 'gemini'].includes(protocol) ? protocol : 'openai',
         base_url: normalizeBaseUrl(provider.base_url), models: normalizeModels(provider.models),
         notes: '从配置文件导入', enabled: provider.enabled === false || provider.enabled === 0 ? 0 : 1,
+        // v0.7.9：仅管理员导出的 schemaVersion 2 携带 API Key
+        ...(schemaV2 && safeText(provider.api_key, 500) ? { api_key: safeText(provider.api_key, 500) } : {}),
       };
     });
     return { format: 'weave-canvas', providers: safeProviders, aiConfigs, defaults: {} };

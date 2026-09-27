@@ -1,0 +1,102 @@
+== 1. 4 个模式的最终请求体 ==
+
+[文生视频] → {"model":"agnes-video-2.5-flash","prompt":"一只猫在草地上奔跑","mode":"text","seconds":"5","aspect_ratio":"16:9"}
+
+[全能参考] → {"model":"agnes-video-2.5-flash","prompt":"参考图1 中的角色缓缓起舞","mode":"reference","images":["https://x.test/a.png"],"seconds":"5","aspect_ratio":"16:9"}
+
+[图生视频] → {"model":"agnes-video-2.5-flash","prompt":"参考图1 中的角色向前走动","mode":"keyframe","first_frame":"https://x.test/a.png","seconds":"5","aspect_ratio":"16:9"}
+
+[首尾帧] → {"model":"agnes-video-2.5-flash","prompt":"参考图1 过渡到 参考图2","mode":"keyframe","first_frame":"https://x.test/a.png","last_frame":"https://x.test/b.png","seconds":"5","aspect_ratio":"16:9"}
+
+== 2. 断言（Agnes Video 2.5 规范） ==
+  ✅ text 模式带 mode=text
+  ✅ reference 模式带 mode=reference
+  ✅ keyframe 模式带 mode=keyframe（图生视频）
+  ✅ keyframe 模式带 mode=keyframe（首尾帧）
+  ✅ text 不含 images/first_frame/last_frame/audios
+  ✅ reference 携带 images:[url]
+  ✅ reference 不含 first_frame/last_frame
+  ✅ 图生视频 携带 first_frame
+  ✅ 图生视频 不含 last_frame/images/audios
+  ✅ 首尾帧 同时携带 first_frame + last_frame
+  ✅ 首尾帧 不含 images
+  ✅ seconds 以字符串下发
+  ✅ 通用分支不再注入 size
+  ✅ aspect_ratio 透传
+
+== 3. 兼容性（不破坏其它网关） ==
+  ✅ openai-video 协议不注入 mode
+  ✅ openai-video 协议保持旧版 image 字段
+  ✅ 未传 mode 时不注入 mode
+  ✅ 未传 mode 时保留 image + aspect_ratio
+  ✅ 非法 mode 值被丢弃
+  ✅ text 模式对不适用媒体字段做条件收敛
+
+== 4. engine 参数收敛辅助函数 ==
+  ✅ clampVideoSeconds(3) → 4（AGNES 下限）
+  ✅ clampVideoSeconds(20) → 12（AGNES 上限）
+  ✅ clampVideoSeconds(undefined) → 5（默认）
+  ✅ clampVideoSeconds("7") → 7
+  ✅ resolveVideoSize('720p') → '720P'
+  ✅ resolveVideoSize('1080p') → '720P'（回落到受支持值）
+  ✅ resolveVideoSize('2k') → '2K'
+  ✅ resolveVideoSize(undefined) → 720P（默认）
+
+== 5. pickRefUrls：@图片N 引用顺序 / 连线顺序 / 多张图 ==
+  ✅ 无 mention → 按连线顺序返回全部
+  ✅ @图片2 @图片1 → 按引用顺序
+  ✅ 无 mediaRefs → 回落上游最后一张图
+
+== 6. videoArgsForImage：分镜 / 剧情片出片的统一入参 ==
+  ✅ 单镜有图 → mode=keyframe
+  ✅ 单镜有图 → first_frame=图
+  ✅ 单镜有图 → 不产出 image 字段（避免 image 与 first_frame 同时出现）
+  ✅ 单镜无图 → mode=text
+  ✅ 单镜无图 → 无 first_frame / image
+  ✅ videoArgsForImage 时长下限收敛（3→4）
+  ✅ videoArgsForImage 时长上限收敛（20→12）
+  ✅ videoArgsForImage size 默认 720P
+  ✅ 批量混合：镜头1 → keyframe
+  ✅ 批量混合：镜头2 → text
+  ✅ 批量混合：镜头3 → keyframe
+  ✅ 批量混合：各自媒体字段正确
+  ✅ shot 有图 → body.mode=keyframe 且仅 first_frame（无 image / images）
+  ✅ shot 无图 → body.mode=text 且无任何媒体字段
+
+== 7. agnes-video 独立协议（POST /videos + GET /agnesapi） ==
+
+[agnes text]  url=https://apihub.agnes-ai.com/v1/videos
+  body={"model":"agnes-video-2.5-flash","prompt":"一只猫","mode":"text","seconds":"5","aspect_ratio":"16:9"}
+  poll=https://apihub.agnes-ai.com/v1/agnesapi?video_id={{id}}&model_name=agnes-video-2.5-flash
+  resultPath=metadata.url
+[agnes reference]  body={"model":"agnes-video-2.5-flash","prompt":"p","mode":"reference","images":["https://x.test/a.png"],"seconds":"5","aspect_ratio":"16:9"}
+[agnes keyframe]   body={"model":"agnes-video-2.5-flash","prompt":"p","mode":"keyframe","first_frame":"https://x.test/a.png","seconds":"5","aspect_ratio":"16:9"}
+  ✅ agnes url 指向官方端点 /videos
+  ✅ agnes poll.url 形如 /agnesapi?video_id={{id}}&model_name=<model>
+  ✅ agnes poll.resultPath = metadata.url
+  ✅ agnes poll 节奏 1500ms × 240
+  ✅ agnes id 提取优先 video_id → id → task_id
+  ✅ agnes text → body.mode=text
+  ✅ agnes text → 绝不注入 size
+  ✅ agnes text → 不含任何媒体字段
+  ✅ agnes seconds 以字符串下发
+  ✅ agnes aspect_ratio 透传
+  ✅ agnes reference → mode=reference + images[]
+  ✅ agnes reference → 无 size / 无 first_frame
+  ✅ agnes keyframe → mode=keyframe + first_frame
+  ✅ agnes keyframe → 无 size / 无 images
+  ✅ agnes seconds 越界收敛（3→4）
+  ✅ agnes seconds 越界收敛（20→12）
+  ✅ agnes 未提供 seconds → body 不含 seconds
+  ✅ agnes 缺失 mode → 抛错
+  ✅ agnes 非法 mode → 抛错
+  ✅ digFirstKey 优先取 video_id
+  ✅ digFirstKey 回落 id
+  ✅ digFirstKey 回落 task_id
+  ✅ digFirstKey 不误取 progress / status
+  ✅ 通用 openai 分支不含 size
+  ✅ 通用 openai 分支仍保留 mode（其它聚合网关需要）
+  ✅ openai-video 分支不含 size
+  ✅ openai-video 分支不含 mode
+
+===== 结果：72 passed, 0 failed =====

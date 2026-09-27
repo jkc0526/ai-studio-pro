@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { db, q, seed, uid, now, ROOT, DATA_DIR, OUTPUT_DIR } from './db.js';
 import { runWorkflow, ProgressEmitter } from './engine.js';
 import * as pipeline from './pipeline.js';
@@ -28,9 +29,9 @@ const fail = (res, msg, code = 400) => res.status(code).json({ success: false, e
 const wrap = (fn) => (req, res) => {
   const onError = (e) => {
     console.error('[api]', req.method, req.url, e);
-    fail(res, e?.message || String(e), 500);
+    fail(res, e?.message || String(e), e?.status || 500);
   };
-  try { return Promise.resolve(fn(req, res)).catch(onError); }
+    try { return Promise.resolve(fn(req, res)).catch(onError); }
   catch (e) { onError(e); }
 };
 
@@ -196,33 +197,88 @@ const portableBaseUrl = (value) => {
   } catch { return ''; }
 };
 
+/* ---------------- 管理员（v0.7.9：密码登录后导出/导入可携带 API Key） ---------------- */
+const ADMIN_KV = 'admin_password';
+const ADMIN_TTL = 8 * 3600 * 1000;
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const adminTokens = new Map();
+const getAdminHash = () => q.one("SELECT value FROM kv WHERE key = 'admin_password'")?.value || '';
+
+app.get('/api/admin/status', wrap((req, res) => ok(res, { configured: !!getAdminHash() })));
+
+app.post('/api/admin/setup', wrap((req, res) => {
+  const password = String(req.body?.password || '');
+  if (password.length < 4) return fail(res, '管理密码至少 4 位');
+  const existing = getAdminHash();
+  if (existing && sha256(String(req.body?.oldPassword || '')) !== existing) {
+    return fail(res, '已设置过管理密码，请先输入旧密码', 403);
+  }
+  q.run('INSERT INTO kv (key, value, update_time) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, update_time = excluded.update_time',
+    ADMIN_KV, sha256(password), now());
+  ok(res, { configured: true });
+}));
+
+app.post('/api/admin/login', wrap((req, res) => {
+  const stored = getAdminHash();
+  if (!stored) return fail(res, '尚未设置管理密码', 400);
+  if (sha256(String(req.body?.password || '')) !== stored) return fail(res, '管理密码错误', 403);
+  const token = crypto.randomBytes(24).toString('hex');
+  adminTokens.set(token, Date.now() + ADMIN_TTL);
+  ok(res, { token });
+}));
+
+const requireAdmin = (req) => {
+  const token = String(req.headers['x-admin-token'] || '');
+  const expiry = adminTokens.get(token);
+  if (!expiry || expiry < Date.now()) {
+    throw Object.assign(new Error('管理员未登录或登录已过期，请重新输入管理密码'), { status: 401 });
+  }
+};
+
+/* ---------------- 配置导入导出 ---------------- */
 app.get('/api/config/export', wrap((req, res) => {
-  const providers = q.all('SELECT id, name, protocol, base_url, models_json, notes, enabled FROM provider ORDER BY create_time')
+  const withKeys = req.query.withKeys === '1';
+  if (withKeys) requireAdmin(req);
+  const keyCol = withKeys ? ', api_key' : '';
+  const providers = q.all(`SELECT id, name, protocol, base_url, models_json, notes, enabled${keyCol} FROM provider ORDER BY create_time`)
     .map((row) => ({
       id: row.id, name: row.name, protocol: row.protocol, base_url: portableBaseUrl(row.base_url),
       models: portableModels(row.models_json), enabled: row.enabled,
+      ...(withKeys ? { api_key: row.api_key || '' } : {}),
     }));
-  const aiConfigs = q.all('SELECT purpose, provider, base_url, model_id, provider_id, custom_api_id, notes FROM ai_config')
-    .map(({ notes, ...row }) => ({ ...row, base_url: portableBaseUrl(row.base_url), provider_name: row.provider_id ? q.one('SELECT name FROM provider WHERE id = ?', row.provider_id)?.name || null : null }));
-  ok(res, { app: 'weave-canvas', schemaVersion: 1, exportedAt: now(), providers, aiConfigs });
+  const aiConfigs = q.all(`SELECT purpose, provider, base_url, model_id, provider_id, custom_api_id, notes${keyCol} FROM ai_config`)
+    .map(({ notes, ...row }) => ({
+      ...row, base_url: portableBaseUrl(row.base_url),
+      provider_name: row.provider_id ? q.one('SELECT name FROM provider WHERE id = ?', row.provider_id)?.name || null : null,
+      ...(withKeys ? { api_key: row.api_key || '' } : {}),
+    }));
+  ok(res, { app: 'weave-canvas', schemaVersion: withKeys ? 2 : 1, exportedAt: now(), withKeys, providers, aiConfigs });
 }));
 
 app.post('/api/config/import', wrap((req, res) => {
   const normalized = normalizeConfigImport(req.body);
   const providerIdMap = new Map();
   const imported = [];
+  let credentialsImported = 0;
   db.exec('BEGIN');
   try {
     for (const provider of normalized.providers) {
       const existing = q.one('SELECT id FROM provider WHERE name = ? AND base_url = ?', provider.name, provider.base_url);
       const id = existing?.id || uid('pv');
       const modelsJson = JSON.stringify(provider.models || []);
+      const apiKey = safeKey(provider.api_key);
       if (existing) {
-        q.run('UPDATE provider SET protocol = ?, models_json = ?, notes = ?, enabled = ?, update_time = ? WHERE id = ?',
-          provider.protocol, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), id);
+        // 管理员配置导入时携带 Key 则覆盖；普通导入不带 Key 字段，保留原值
+        if (apiKey) {
+          q.run('UPDATE provider SET protocol = ?, api_key = ?, models_json = ?, notes = ?, enabled = ?, update_time = ? WHERE id = ?',
+            provider.protocol, apiKey, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), id);
+        } else {
+          q.run('UPDATE provider SET protocol = ?, models_json = ?, notes = ?, enabled = ?, update_time = ? WHERE id = ?',
+            provider.protocol, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), id);
+        }
       } else {
-        q.run('INSERT INTO provider (id, name, protocol, base_url, api_key, models_json, notes, enabled, create_time, update_time) VALUES (?,?,?,?,\'\',?,?,?,?,?)',
-          id, provider.name, provider.protocol, provider.base_url, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), now());
+        q.run('INSERT INTO provider (id, name, protocol, base_url, api_key, models_json, notes, enabled, create_time, update_time) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          id, provider.name, provider.protocol, provider.base_url, apiKey, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), now());
       }
       if (provider.source_id) providerIdMap.set(provider.source_id, id);
       imported.push({ id, name: provider.name, models: provider.models?.length || 0 });
@@ -234,8 +290,15 @@ app.post('/api/config/import', wrap((req, res) => {
       if (!provider || !modelId) return;
       const id = providerIdMap.get(provider.source_id) || q.one('SELECT id FROM provider WHERE name = ? AND base_url = ?', provider.name, provider.base_url)?.id;
       if (!id) return;
-      q.run('UPDATE ai_config SET provider = ?, base_url = ?, model_id = ?, provider_id = ?, custom_api_id = NULL, update_time = ? WHERE purpose = ?',
-        provider.name, provider.base_url, modelId, id, now(), purpose);
+      const cfgKey = safeKey(provider.api_key);
+      if (cfgKey) {
+        q.run('UPDATE ai_config SET provider = ?, base_url = ?, api_key = ?, model_id = ?, provider_id = ?, custom_api_id = NULL, update_time = ? WHERE purpose = ?',
+          provider.name, provider.base_url, cfgKey, modelId, id, now(), purpose);
+        credentialsImported++;
+      } else {
+        q.run('UPDATE ai_config SET provider = ?, base_url = ?, model_id = ?, provider_id = ?, custom_api_id = NULL, update_time = ? WHERE purpose = ?',
+          provider.name, provider.base_url, modelId, id, now(), purpose);
+      }
     };
 
     if (normalized.format === 'infinite-canvas') {
@@ -254,8 +317,14 @@ app.post('/api/config/import', wrap((req, res) => {
     db.exec('ROLLBACK');
     throw error;
   }
-  ok(res, { imported, credentialsImported: false, customApisImported: false });
+  ok(res, { imported, credentialsImported, customApisImported: false });
 }));
+
+/* Key 安全裁剪：仅保留常见 key 字符，长度上限 500 */
+const safeKey = (value) => {
+  const s = String(value || '').trim().replace(/[\u0000-\u001f\u007f]/g, '');
+  return s.slice(0, 500);
+};
 
 /* ---------------- 自定义 API 接口 ---------------- */
 app.get('/api/custom-apis', wrap((req, res) => ok(res, q.all('SELECT * FROM custom_api ORDER BY create_time'))));

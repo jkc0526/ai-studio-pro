@@ -237,25 +237,52 @@ export default function SettingsModal({ open, onClose, notify }) {
       await load();
       const providerCount = result.imported?.length || 0;
       const modelCount = result.imported?.reduce((sum, provider) => sum + (provider.models || 0), 0) || 0;
-      notify(`导入完成：${providerCount} 个渠道、${modelCount} 个模型。API Key 未导入，请在渠道设置中填写。`);
+      notify(result.credentialsImported
+        ? `导入完成：${providerCount} 个渠道、${modelCount} 个模型，API Key 已一并导入。`
+        : `导入完成：${providerCount} 个渠道、${modelCount} 个模型。API Key 未导入，请在渠道设置中填写。`);
     } catch (e) {
       notify(`导入失败：${e.message}`, true);
     } finally { setBusy(''); }
+  };
+
+  const saveJson = (config, filename) => {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const exportConfiguration = async () => {
     setBusy('export');
     try {
       const config = await api.exportConfiguration();
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `weave-canvas-config-${new Date().toISOString().slice(0, 10)}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      saveJson(config, `weave-canvas-config-${new Date().toISOString().slice(0, 10)}.json`);
       notify('配置已导出（不含 API Key 和自定义接口模板）');
     } catch (e) { notify(`导出失败：${e.message}`, true); }
+    finally { setBusy(''); }
+  };
+
+  // 管理员导出（v0.7.9）：首次使用需设置管理密码，导出的配置包含 API Key
+  const adminExportConfiguration = async () => {
+    setBusy('adminExport');
+    try {
+      const st = await api.adminStatus();
+      if (!st.configured) {
+        const pwd = window.prompt('首次使用：请设置管理密码（至少 4 位）。此后「管理员导出」需输入该密码。');
+        if (pwd === null) return;
+        await api.adminSetup({ password: pwd });
+        notify('管理密码已设置');
+      }
+      const pwd2 = window.prompt('管理员导出：请输入管理密码（导出的配置包含 API Key，请妥善保管）');
+      if (pwd2 === null) return;
+      const { token } = await api.adminLogin({ password: pwd2 });
+      const config = await api.exportConfigurationRaw(true, token);
+      saveJson(config, `weave-canvas-config-admin-${new Date().toISOString().slice(0, 10)}.json`);
+      notify('管理员配置已导出（含 API Key，请勿外传）');
+    } catch (e) { notify(`管理员导出失败：${e.message}`, true); }
     finally { setBusy(''); }
   };
 
@@ -325,6 +352,7 @@ export default function SettingsModal({ open, onClose, notify }) {
             <div className="config-transfer-actions">
               <button onClick={() => configFileRef.current?.click()} disabled={!!busy}>导入配置</button>
               <button onClick={exportConfiguration} disabled={!!busy}>{busy === 'export' ? '导出中…' : '导出配置'}</button>
+              <button onClick={adminExportConfiguration} disabled={!!busy} title="输入管理密码后导出，包含 API Key">{busy === 'adminExport' ? '导出中…' : '管理员导出'}</button>
             </div>
           </div>
 

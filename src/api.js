@@ -1,6 +1,6 @@
 const json = async (url, opts = {}) => {
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
@@ -93,6 +93,14 @@ export const api = {
   deleteProvider: (id) => json(`/api/providers/${id}`, { method: 'DELETE' }),
   importConfiguration: (body) => json('/api/config/import', { method: 'POST', body }),
   exportConfiguration: () => json('/api/config/export'),
+  // 管理员（v0.7.9）：登录后可导出/导入含 API Key 的完整配置
+  adminStatus: () => json('/api/admin/status'),
+  adminSetup: (body) => json('/api/admin/setup', { method: 'POST', body }),
+  adminLogin: (body) => json('/api/admin/login', { method: 'POST', body }),
+  exportConfigurationRaw: (withKeys, token) => json(
+    '/api/config/export' + (withKeys ? '?withKeys=1' : ''),
+    { headers: token ? { 'x-admin-token': token } : {} },
+  ),
   listCustomApis: () => json('/api/custom-apis'),
   createCustomApi: (body) => json('/api/custom-apis', { method: 'POST', body }),
   updateCustomApi: (id, body) => json(`/api/custom-apis/${id}`, { method: 'PUT', body }),
