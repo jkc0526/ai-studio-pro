@@ -371,9 +371,9 @@ export default function SettingsModal({ open, onClose, notify }) {
         </div>
 
         <div className="config-card" style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="model-card-icon">W</div>
+          <div className="model-card-icon"><img src="/studio-icon.svg" alt="" /></div>
           <div className="model-card-heading">
-            <b>WeaveCanvas 桌面版</b>
+            <b>AI漫剧工作室</b>
             <span className="hint">{appVersion ? `当前版本 v${appVersion}` : '桌面应用更新'}</span>
             <span className="update-status-message" role="status" aria-live="polite">{updateStatusMessage}</span>
           </div>

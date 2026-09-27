@@ -28,8 +28,8 @@ body { background: var(--bg); font-size: 13px; }
 }
 .side-brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; cursor: pointer; }
 .brand-mark {
-  width: 24px; height: 24px; border-radius: 7px; background: var(--accent); color: #fff;
-  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500;
+  width: 28px; height: 28px; flex: none; border-radius: 8px; object-fit: contain;
+  box-shadow: 0 2px 5px rgba(23, 42, 88, .18);
 }
 .brand-text { font-size: 14px; font-weight: 500; }
 .brand-text b { color: var(--accent); font-weight: 500; }
@@ -229,6 +229,7 @@ button.tiny { font-size: 11px; padding: 1px 6px; color: var(--muted); }
 .model-purpose-card .config-head { min-height: 42px; }
 .model-card-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 11px; color: #079b73; background: #e8f8f1; font-size: 19px; font-weight: 700; }
 .model-card-icon svg { width: 20px; height: 20px; }
+.model-card-icon img { width: 38px; height: 38px; border-radius: 11px; }
 .model-card-heading { display: flex; flex-direction: column; gap: 3px; }
 .model-card-heading b { font-size: 15px; }
 .update-status-message { color: var(--muted); font-size: 11px; line-height: 1.45; }

@@ -17,8 +17,8 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="side-brand" onClick={() => setView('home')} title="回到创作台">
-        <span className="brand-mark">W</span>
-        <span className="brand-text">Weave<b>Canvas</b></span>
+        <img className="brand-mark" src="/studio-icon.svg" alt="" />
+        <span className="brand-text">AI漫剧工作室</span>
       </div>
 
       <button className="side-new" onClick={createScript} title="新建空白项目">

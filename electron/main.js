@@ -10,6 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..');
 const isPackaged = app.isPackaged;
 
+// 固定到旧产品名对应的目录，改品牌后继续使用原有配置、数据库和生成素材。
+app.setPath('userData', path.join(app.getPath('appData'), 'WeaveCanvas'));
+
 let mainWindow = null;
 let serverInfo = null;
 const { autoUpdater } = electronUpdater;
@@ -74,7 +77,7 @@ async function boot() {
     const { startServer } = await import('../server/index.js');
     serverInfo = await startServer({ port: Number(process.env.WEAVE_PORT) || 8787 });
   } catch (err) {
-    dialog.showErrorBox('WeaveCanvas 启动失败', `本地服务无法启动：${err.stack || err.message}`);
+    dialog.showErrorBox('AI漫剧工作室启动失败', `本地服务无法启动：${err.stack || err.message}`);
     app.quit();
     return;
   }
@@ -84,7 +87,8 @@ async function boot() {
     height: 980,
     minWidth: 1100,
     minHeight: 700,
-    title: 'WeaveCanvas · AI 漫剧创作流水线',
+    title: 'AI漫剧工作室',
+    icon: path.join(APP_ROOT, 'dist', 'studio-icon.ico'),
     backgroundColor: '#f6f7f9',
     autoHideMenuBar: true,
     webPreferences: {

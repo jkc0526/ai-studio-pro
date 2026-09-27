@@ -1,4 +1,4 @@
-// 打包脚本：@electron/packager 生成免安装的绿色版（release/WeaveCanvas-win32-x64/WeaveCanvas.exe）
+// 打包脚本：@electron/packager 生成免安装的绿色版（release/vX/AI漫剧工作室-win32-x64/AI漫剧工作室.exe）
 import { packager } from '@electron/packager';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,8 @@ const paths = await packager({
   dir: root,
   // 按版本号输出，避免覆盖旧目录时触发系统的批量删除保护
   out: path.join(root, 'release', `v${pkg.version}`),
-  name: 'WeaveCanvas',
+  name: 'AI漫剧工作室',
+  icon: path.join(root, 'public', 'studio-icon.ico'),
   appVersion: pkg.version,
   platform: 'win32',
   arch: 'x64',
@@ -33,9 +34,9 @@ const paths = await packager({
     /^\/electron\/build\.mjs$/,
   ],
   win32metadata: {
-    CompanyName: 'WeaveCanvas',
-    FileDescription: 'AI 漫剧创作流水线（剧本 · 分镜 · 角色 · 视频 · 成片）',
-    ProductName: 'WeaveCanvas',
+    CompanyName: 'AI漫剧工作室',
+    FileDescription: 'AI漫剧工作室（剧本 · 分镜 · 角色 · 视频 · 成片）',
+    ProductName: 'AI漫剧工作室',
     InternalName: 'WeaveCanvas',
   },
 });
@@ -45,9 +46,9 @@ console.log('打包完成:', dir);
 
 // 放一个说明文件在产物旁边
 fs.writeFileSync(path.join(dir, '使用说明.txt'), [
-  'WeaveCanvas · AI 漫剧创作流水线',
+  'AI漫剧工作室',
   '',
-  '1. 双击 WeaveCanvas.exe 启动（首次启动会自动创建 WeaveCanvas-data 数据目录）',
+  '1. 双击 AI漫剧工作室.exe 启动（首次启动会自动创建 WeaveCanvas-data 数据目录）',
   '2. 进入后点右上角「设置」，填 Base URL / API Key / 模型名（支持 OpenAI、Anthropic、Gemini、硅基流动、火山方舟、DeepSeek、Kimi、智谱、OpenRouter、本地 Ollama 等预设，也可自定义任意 REST 接口）',
   '3. 剧本 → 一键拆分镜 → 提取角色 → 分镜批量生图 → 图生视频 → 导出成片（MP4 + SRT）',
   '',

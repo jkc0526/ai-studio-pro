@@ -1,9 +1,9 @@
 {
   "name": "weave-canvas",
   "private": true,
-  "version": "0.7.11",
+  "version": "0.7.12",
   "type": "module",
-  "description": "AI 漫剧创作流水线：剧本·分镜·角色一致性·批量生图·图生视频·成片导出",
+  "description": "AI漫剧工作室：剧本·分镜·角色一致性·批量生图·图生视频·成片导出",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "node server/index.js",
@@ -14,7 +14,7 @@
     "app:dev": "npm run build && electron .",
     "pack": "npm run build && electron-builder --win nsis --x64",
     "publish": "npm run build && electron-builder --win nsis --x64 --publish always",
-    "test": "node --check electron/main.js && node --check electron/preload.cjs && node --check electron/updaterController.js && node --check electron/dataMigration.js && node --no-warnings test/model-center-ui.mjs && node --no-warnings test/config-transfer.mjs && node --no-warnings test/config-transfer-api.mjs && node --no-warnings test/local-reference-forwarding.mjs && node --no-warnings test/node-media-alignment-loading.mjs && node --no-warnings test/image-viewer-zoom.mjs && node --no-warnings test/image-preview-dblclick.mjs && node --no-warnings test/video-capabilities.mjs && node --no-warnings test/video-price-display.mjs && node --no-warnings test/video-duration-control.mjs && node --no-warnings test/canvas-wire-add-node.mjs && node --no-warnings test/canvas-auto-layout.mjs && node --no-warnings test/updater-controller.mjs && node --no-warnings test/packaged-data-migration.mjs && node --no-warnings test/github-release-update-config.mjs && node --no-warnings test/image-upload-hides-prompt.mjs && node --no-warnings test/image-provider-and-video-duration.mjs && node --no-warnings test/text-node-processing.mjs && node --no-warnings test/text-node-model-picker-ui.mjs && node --no-warnings test/provider-media-capabilities.mjs && node --no-warnings test/qa-agnes-video.mjs && node --no-warnings test/smoke.mjs",
+    "test": "node --check electron/main.js && node --check electron/preload.cjs && node --check electron/updaterController.js && node --check electron/dataMigration.js && node --no-warnings test/app-branding.mjs && node --no-warnings test/model-center-ui.mjs && node --no-warnings test/config-transfer.mjs && node --no-warnings test/config-transfer-api.mjs && node --no-warnings test/local-reference-forwarding.mjs && node --no-warnings test/node-media-alignment-loading.mjs && node --no-warnings test/image-viewer-zoom.mjs && node --no-warnings test/image-preview-dblclick.mjs && node --no-warnings test/video-capabilities.mjs && node --no-warnings test/video-price-display.mjs && node --no-warnings test/video-duration-control.mjs && node --no-warnings test/canvas-wire-add-node.mjs && node --no-warnings test/canvas-auto-layout.mjs && node --no-warnings test/updater-controller.mjs && node --no-warnings test/packaged-data-migration.mjs && node --no-warnings test/github-release-update-config.mjs && node --no-warnings test/image-upload-hides-prompt.mjs && node --no-warnings test/image-provider-and-video-duration.mjs && node --no-warnings test/text-node-processing.mjs && node --no-warnings test/text-node-model-picker-ui.mjs && node --no-warnings test/provider-media-capabilities.mjs && node --no-warnings test/qa-agnes-video.mjs && node --no-warnings test/smoke.mjs",
     "test:ui": "node --no-warnings test/agent-ui.mjs",
     "release": "node scripts/release.mjs"
   },
@@ -36,7 +36,7 @@
   "main": "electron/main.js",
   "build": {
     "appId": "com.weavecanvas.desktop",
-    "productName": "WeaveCanvas",
+    "productName": "AI漫剧工作室",
     "asar": true,
     "directories": {
       "output": "release/installers"
@@ -52,6 +52,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "public/studio-icon.ico",
       "target": [
         {
           "target": "nsis",
