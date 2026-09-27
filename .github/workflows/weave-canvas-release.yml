@@ -49,7 +49,28 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Build installer and publish update assets
-        run: npx electron-builder --win nsis --x64 --publish always
+      - name: Build Windows installer
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Upload installer and updater metadata to the existing release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $installer = "WeaveCanvas Setup $version.exe"
+          $assetPaths = @(
+            (Join-Path 'release/installers' $installer),
+            (Join-Path 'release/installers' "$installer.blockmap"),
+            (Join-Path 'release/installers' 'latest.yml')
+          )
+          foreach ($assetPath in $assetPaths) {
+            if (-not (Test-Path -LiteralPath $assetPath)) {
+              throw "Required update asset was not produced: $assetPath"
+            }
+          }
+          & gh release upload $env:RELEASE_TAG @assetPaths --clobber --repo jkc0526/ai-studio-pro
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to upload installer and updater metadata to GitHub Release.'
+          }
