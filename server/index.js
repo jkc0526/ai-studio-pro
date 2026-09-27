@@ -878,8 +878,16 @@ app.get('/api/models', wrap(async (req, res) => {
   const purpose = req.query.purpose || 'thinking';
   const selectedProvider = req.query.providerId ? q.one('SELECT id, name, protocol, models_json FROM provider WHERE id = ?', req.query.providerId) : null;
   const storedModels = (() => { try { const value = JSON.parse(selectedProvider?.models_json || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } })();
+
+  let target;
+  try { target = ai.resolveTarget(purpose, {}, (() => { const o = {}; if (req.query.providerId) o.providerId = req.query.providerId; if (req.query.customApiId) o.customApiId = req.query.customApiId; if (req.query.base_url) o.baseURL = req.query.base_url; if (req.query.api_key) o.apiKey = req.query.api_key; return o; })()); }
+  catch (e) { return ok(res, { list: [], error: e.message }); }
+
+  const fallbackProvider = selectedProvider || target.provider || null;
   const localModelsResponse = (error = null) => {
-    const records = portableModels(selectedProvider?.models_json || '[]');
+    const records = portableModels(fallbackProvider?.models_json || '[]');
+    // 始终把当前配置的模型放进列表，保证节点有可选项
+    if (target.model && !records.some((r) => r.id === target.model)) records.push({ id: target.model, name: target.model });
     const list = records.map((model) => model.id);
     return {
       list,
@@ -895,20 +903,11 @@ app.get('/api/models', wrap(async (req, res) => {
       },
       modelCapabilities: Object.fromEntries(records.map((record) => [record.id, readVideoDurationCapability(record)]).filter(([, capability]) => capability)),
       modelPrices: Object.fromEntries(records.map((record) => [record.id, formatVideoModelPrice(record)]).filter(([, price]) => price)),
-      blocked: [], source: selectedProvider?.name || '', providerId: selectedProvider?.id || null,
-      providerName: selectedProvider?.name || '', providerProtocol: selectedProvider?.protocol || null,
+      blocked: [], source: fallbackProvider?.name || '', providerId: fallbackProvider?.id || null,
+      providerName: fallbackProvider?.name || '', providerProtocol: fallbackProvider?.protocol || null,
       ...(error ? { error } : {}),
     };
   };
-  const override = {};
-  if (req.query.providerId) override.providerId = req.query.providerId;
-  if (req.query.customApiId) override.customApiId = req.query.customApiId;
-  if (req.query.base_url) override.baseURL = req.query.base_url;
-  if (req.query.api_key) override.apiKey = req.query.api_key;
-
-  let target;
-  try { target = ai.resolveTarget(purpose, {}, override); }
-  catch (e) { return ok(res, selectedProvider && storedModels.length ? localModelsResponse(e.message) : { list: [], error: e.message }); }
 
   if (target.custom) {
     const models = q.all('SELECT models_json FROM provider WHERE 1=0');
@@ -941,7 +940,7 @@ app.get('/api/models', wrap(async (req, res) => {
       defaults: {
         text: purpose === 'thinking' ? target.model : videoMod.pickModel('text'),
         image: purpose === 'image_gen' ? target.model : videoMod.pickModel('image'),
-        video: purpose === 'video' ? (override.providerId ? providerVideoDefault || '' : target.model) : videoMod.pickModel('video'),
+        video: purpose === 'video' ? (req.query.providerId ? providerVideoDefault || '' : target.model) : videoMod.pickModel('video'),
       },
       source: target.label,
       providerId: target.provider?.id || null,
@@ -957,8 +956,10 @@ app.get('/api/models', wrap(async (req, res) => {
   try {
     const r = await fetch(`${String(target.baseURL).replace(/\/+$/, '')}/models`, { headers: { Authorization: `Bearer ${target.apiKey}` } });
     const text = await r.text();
-    if (!r.ok) return ok(res, selectedProvider && storedModels.length ? localModelsResponse(`获取模型列表失败（HTTP ${r.status}）`) : { list: [], error: `获取模型列表失败（HTTP ${r.status}）：${text.slice(0, 160)}` });
-    const j = JSON.parse(text);
+    if (!r.ok) return ok(res, localModelsResponse(`获取模型列表失败（HTTP ${r.status}）`));
+    // 网关偶发返回 HTML（WAF/限流页），无法按 JSON 解析时回退本地模型列表
+    let j;
+    try { j = JSON.parse(text); } catch { return ok(res, localModelsResponse('网关返回了非 JSON 响应（可能被 WAF/限流页拦截），已回退本地模型列表')); }
     const remoteRecords = (j.data || j.models || []).filter((m) => typeof m === 'string' || m?.id || m?.name);
     const localRecords = portableModels(target.provider?.models_json || '');
     const remoteIds = new Set(remoteRecords.map((m) => typeof m === 'string' ? m : (m.id || m.name)));
@@ -967,7 +968,7 @@ app.get('/api/models', wrap(async (req, res) => {
     modelCache.set(cacheKey, { at: Date.now(), list, models: records });
     ok(res, decorate(list, records));
   } catch (e) {
-    ok(res, selectedProvider && storedModels.length ? localModelsResponse(`获取模型列表失败：${e.message}`) : { list: [], error: `获取模型列表失败：${e.message}` });
+    ok(res, localModelsResponse(`获取模型列表失败：${e.message}`));
   }
 }));
 
