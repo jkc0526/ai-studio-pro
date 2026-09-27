@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useCanvas } from '../context.js';
+import ErrorSummary from '../components/ErrorSummary.jsx';
 
 const STATUS_TEXT = { running: '运行中', done: '完成', error: '失败' };
 
@@ -52,7 +53,7 @@ export default function LlmNode({ id, data, selected }) {
           onChange={(e) => ctx.updateNode(id, { modelId: e.target.value })}
         />
 
-        {data.status === 'error' && data.error && <div className="err-box">{data.error}</div>}
+        {data.status === 'error' && <ErrorSummary error={data.error} />}
 
         <div>
           <span className="field-label">模型输出</span>

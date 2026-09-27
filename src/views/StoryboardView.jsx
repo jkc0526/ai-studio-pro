@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.js';
+import ErrorSummary from '../components/ErrorSummary.jsx';
 
 const COLS = [2, 3, 4];
 const STATUS = { idle: '待生成', running: '生图中', video: '出视频中', done: '已完成', error: '失败' };
@@ -14,6 +15,7 @@ export default function StoryboardView() {
   const { script, characters, styleId, modelGroups, modelDefaults, notify, shotsTick } = useApp();
   const [shots, setShots] = useState([]);
   const [cols, setCols] = useState(3);
+  const [layout, setLayout] = useState('grid');
   const [onlyMissing, setOnlyMissing] = useState(true);
   const [imgModel, setImgModel] = useState('');
   const [videoModel, setVideoModel] = useState('');
@@ -140,6 +142,17 @@ export default function StoryboardView() {
     } catch (e) { notify(e.message, true); } finally { setBusy(''); }
   };
 
+  const composePrompts = async () => {
+    if (!shots.length) return notify('没有可合成的镜头', true);
+    setBusy('compose');
+    try {
+      const result = await api.composeShots(script.id, { modelId: modelDefaults?.text || undefined });
+      const prompts = Object.fromEntries((result.shots || []).map((shot) => [shot.id, shot.prompt]));
+      setShots((list) => list.map((shot) => prompts[shot.id] ? { ...shot, prompt_used: prompts[shot.id] } : shot));
+      notify(`已合成 ${result.composed || 0} 条提示词`);
+    } catch (e) { notify(`提示词合成失败：${e.message}`, true); } finally { setBusy(''); }
+  };
+
   const addShot = async () => {
     const s = await api.createShot(script.id, { scene: '新镜头：请描述画面', duration: 5, characterIds: [] });
     setShots((list) => [...list, s]);
@@ -170,8 +183,10 @@ export default function StoryboardView() {
         <span className="pill">分镜 · {script.title}</span>
         <span className="pill">{shots.length} 镜{noImage ? ` · ${noImage} 镜待出图` : ''}</span>
         <div className="sep" />
-        <span className="pill">宫格</span>
-        {COLS.map((c) => <button key={c} className={cols === c ? 'primary' : ''} onClick={() => setCols(c)}>{c} 列</button>)}
+        <span className="pill">视图</span>
+        <button className={layout === 'grid' ? 'primary' : ''} onClick={() => setLayout('grid')}>宫格</button>
+        <button className={layout === 'table' ? 'primary' : ''} onClick={() => setLayout('table')}>表格</button>
+        {layout === 'grid' && COLS.map((c) => <button key={c} className={cols === c ? 'ghost on' : 'ghost'} onClick={() => setCols(c)}>{c} 列</button>)}
         <div className="sep" />
         <select value={imgModel} onChange={(e) => setImgModel(e.target.value)} style={{ width: 180 }} title="图像模型">
           <option value="">图像模型：默认{modelDefaults?.image ? `(${modelDefaults.image})` : ''}</option>
@@ -195,6 +210,9 @@ export default function StoryboardView() {
           只处理缺失的
         </label>
         <div className="sep" />
+        <button disabled={busy === 'compose' || !shots.length} onClick={composePrompts} title="根据剧本、分镜和角色合成完整提示词">
+          {busy === 'compose' ? '合成中…' : '合成提示词'}
+        </button>
         <button className="primary" disabled={busy === 'image' || !shots.length}
           onClick={() => startJob('shot.image', () => api.batchImages(script.id, { styleId, onlyMissing, modelId: imgModel || undefined, size: '1024x1536' }))}>
           {busy === 'image' ? '提交中…' : '⚡ 批量生图'}
@@ -237,7 +255,9 @@ export default function StoryboardView() {
             <p className="hint">回到「剧本」页点「① 一键拆分镜」，AI 会把剧本拆成带画面描述、台词、镜头语言的镜头表。</p>
           </div>
         )}
-        <div className="board-wrap">
+        {layout === 'table' ? (
+          <ShotTable shots={shots} characters={characters} patchShot={patchShot} genOne={genOne} genVideo={genVideo} removeShot={removeShot} />
+        ) : <div className="board-wrap">
           <div className="board" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {shots.map((shot) => {
             const cast = charsOf(shot);
@@ -297,7 +317,7 @@ export default function StoryboardView() {
                     </div>
                   )}
 
-                  {shot.error && <div className="err-box">{shot.error}</div>}
+                  {shot.error && <ErrorSummary error={shot.error} />}
                 </div>
 
                 <div className="shot-foot">
@@ -405,7 +425,7 @@ export default function StoryboardView() {
                   </details>
                 )}
 
-                {selected.error && <div className="err-box">{selected.error}</div>}
+                {selected.error && <ErrorSummary error={selected.error} />}
               </div>
 
               <div className="insp-foot">
@@ -418,8 +438,31 @@ export default function StoryboardView() {
               </div>
             </aside>
           )}
-        </div>
+        </div>}
       </div>
     </>
+  );
+}
+
+function ShotTable({ shots, characters, patchShot, genOne, genVideo, removeShot }) {
+  return (
+    <div className="shot-table-wrap">
+      <table className="shot-table">
+        <thead><tr><th>#</th><th>画面描述</th><th>出镜角色</th><th>镜头语言</th><th>台词 / 旁白</th><th>时长</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>{shots.map((shot) => {
+          const cast = charsOf(shot);
+          return <tr key={shot.id}>
+            <td className="seq-cell">{shot.seq}</td>
+            <td><textarea rows={2} value={shot.scene || ''} onChange={(e) => patchShot(shot.id, { scene: e.target.value })} /></td>
+            <td><div className="chips table-chips">{characters.map((c) => <button key={c.id} className={`chip ${cast.includes(c.id) ? 'on' : ''}`} onClick={() => patchShot(shot.id, { characterIds: cast.includes(c.id) ? cast.filter((id) => id !== c.id) : [...cast, c.id] })}>{c.name}</button>)}</div></td>
+            <td><input value={shot.camera || ''} placeholder="中景，推近" onChange={(e) => patchShot(shot.id, { camera: e.target.value })} /></td>
+            <td><input value={shot.dialogue || ''} placeholder="台词 / 旁白" onChange={(e) => patchShot(shot.id, { dialogue: e.target.value })} /></td>
+            <td><input className="duration-cell" type="number" min="1" max="20" value={shot.duration || 5} onChange={(e) => patchShot(shot.id, { duration: Number(e.target.value) }, true)} /></td>
+            <td>{shot.image_url ? <img className="table-thumb" src={shot.image_url} alt="" /> : <span className="badge">待生成</span>}</td>
+            <td><div className="table-actions"><button className="primary tiny" onClick={() => genOne(shot)}>生图</button><button className="tiny" disabled={!shot.image_url} onClick={() => genVideo(shot)}>视频</button><button className="ghost tiny" onClick={() => removeShot(shot.id)}>删除</button></div></td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
   );
 }

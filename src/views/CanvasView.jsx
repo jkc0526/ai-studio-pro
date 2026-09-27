@@ -22,6 +22,8 @@ import DirectorNode from '../nodes/DirectorNode.jsx';
 import BatchUploadNode from '../nodes/BatchUploadNode.jsx';
 import SnippetsPanel from '../components/SnippetsPanel.jsx';
 import NodePalette from '../components/NodePalette.jsx';
+import { getAutoConnectParams } from './canvasConnections.js';
+import { getAutoLayoutPositions } from './canvasLayout.js';
 
 const nodeTypes = {
   textNode: TextNode, llmNode: LlmNode, imageNode: ImageNode, noteNode: NoteNode,
@@ -41,7 +43,7 @@ const NODE_DEFAULTS = {
   llmNode: { label: '大模型', prompt: '', status: null },
   imageNode: { label: '图片', prompt: '', ratio: '16:9', quality: '1K', size: '1536x864', status: null },
   noteNode: { label: '便签', content: '' },
-  videoNode: { label: '视频', prompt: '', mode: 'text', ratio: '16:9', resolution: '1080p', duration: 5, status: null },
+  videoNode: { label: '视频', prompt: '', mode: 'text', ratio: '16:9', resolution: '720p', duration: 5, status: null },
   uploadNode: { label: '上传', url: '', fileName: '', kind: null },
   assetNode: { label: '素材库', url: '', assetId: null, kind: null },
   scriptNode: { label: '分镜脚本', scriptId: '', includeOutline: true },
@@ -84,7 +86,8 @@ function upstreamOf(id, edges) {
 }
 
 export default function CanvasView({ notify }) {
-  const { modelGroups, setView } = useApp();
+  const { modelGroups, modelDefaults, imageProviders, imageDefaultProvider, videoProviders, videoDefaultProvider, videoDefaultModel, videoModelCapabilities, videoModelPrices, setView, openProject, script } = useApp();
+  const textDefaultModel = modelDefaults?.text || '';
   const [canvases, setCanvases] = useState([]);
   const [canvasId, setCanvasId] = useState(null);
   const [title, setTitle] = useState('');
@@ -98,7 +101,7 @@ export default function CanvasView({ notify }) {
   const [showSnippets, setShowSnippets] = useState(false);
   const [snippetTarget, setSnippetTarget] = useState(null);
   const [menu, setMenu] = useState(null);
-  const [palette, setPalette] = useState(null); // null | { flow: {x,y} }
+  const [palette, setPalette] = useState(null); // null | { flow: {x,y}, connection?: {nodeId, handleType, handleId} }
   /* 画布 chrome 开关（对齐 LibTV 左下控件条） */
   const [snapGrid, setSnapGrid] = useState(true);
   const [showMap, setShowMap] = useState(false);
@@ -111,7 +114,19 @@ export default function CanvasView({ notify }) {
   const skipSave = useRef(true);
   const past = useRef([]);
   const future = useRef([]);
+  /* 撤销栈高度用 state 镜像一份：past/future 是 ref（写入不触发重渲染），
+     工具栏按钮的 disabled 需要真实可撤销/可重做态，否则只能读全局 window.history。
+     每次 pushHistory/undo/redo 后同步这两位。 */
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const { screenToFlowPosition, setViewport: setFlowViewport, fitView } = useReactFlow();
+
+  const onSelectionChange = useCallback(({ nodes: sel }) => {
+    const next = sel.map((n) => n.id);
+    setSelectedIds((prev) => (
+      prev.length === next.length && prev.every((id, index) => id === next[index]) ? prev : next
+    ));
+  }, []);
 
   useEffect(() => { nodesRef.current = nodes; }, [nodes]);
   useEffect(() => { edgesRef.current = edges; }, [edges]);
@@ -128,6 +143,7 @@ export default function CanvasView({ notify }) {
     setViewport(c.viewport || { x: 0, y: 0, zoom: 1 });
     setFlowViewport(c.viewport || { x: 0, y: 0, zoom: 1 });
     past.current = []; future.current = [];
+    setCanUndo(false); setCanRedo(false);
     setSavedAt(new Date());
   }, [setNodes, setEdges, setFlowViewport]);
 
@@ -163,6 +179,8 @@ export default function CanvasView({ notify }) {
     past.current.push({ nodes: structuredClone(nodesRef.current), edges: structuredClone(edgesRef.current) });
     if (past.current.length > 60) past.current.shift();
     future.current = [];
+    setCanUndo(past.current.length > 0);
+    setCanRedo(false);
   }, []);
 
   const undo = useCallback(() => {
@@ -170,6 +188,8 @@ export default function CanvasView({ notify }) {
     if (!prev) return notify('没有可撤销的操作');
     future.current.push({ nodes: structuredClone(nodesRef.current), edges: structuredClone(edgesRef.current) });
     setNodes(prev.nodes); setEdges(prev.edges);
+    setCanUndo(past.current.length > 0);
+    setCanRedo(true);
   }, [setNodes, setEdges, notify]);
 
   const redo = useCallback(() => {
@@ -177,6 +197,8 @@ export default function CanvasView({ notify }) {
     if (!next) return notify('没有可重做的操作');
     past.current.push({ nodes: structuredClone(nodesRef.current), edges: structuredClone(edgesRef.current) });
     setNodes(next.nodes); setEdges(next.edges);
+    setCanUndo(true);
+    setCanRedo(future.current.length > 0);
   }, [setNodes, setEdges, notify]);
 
   const onNodesChange = useCallback((changes) => {
@@ -193,6 +215,16 @@ export default function CanvasView({ notify }) {
     pushHistory();
     setEdges((eds) => addEdge({ ...params, animated: true, markerEnd: { type: MarkerType.ArrowClosed } }, eds));
   }, [setEdges, pushHistory]);
+
+  /* 双击一条连线 → 只断开这一条（走 pushHistory，在画布内按 Ctrl/Cmd+Z 可撤销）。
+     与「双击空白弹添加菜单」的 capture 处理器共存：onPaneDoubleClick 已排除 .react-flow__edge，
+     所以双击边不会同时弹出菜单。 */
+  const onEdgeDoubleClick = useCallback((event, edge) => {
+    event.preventDefault();
+    pushHistory();
+    setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    notify('已断开连接');
+  }, [setEdges, pushHistory, notify]);
 
   const updateNode = useCallback((id, patch) => {
     setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
@@ -219,7 +251,7 @@ export default function CanvasView({ notify }) {
     return { x: base.x, y: base.y };
   }, []);
 
-  const addNode = useCallback((type, pos) => {
+  const addNode = useCallback((type, pos, connection) => {
     pushHistory();
     const defaults = NODE_DEFAULTS[type] || {};
     let position = pos;
@@ -230,27 +262,28 @@ export default function CanvasView({ notify }) {
     } else {
       position = freeSpot(position);
     }
-    setNodes((nds) => nds.concat({ id: newId('n'), type, position, data: { ...defaults } }));
-  }, [setNodes, screenToFlowPosition, pushHistory, freeSpot]);
+    const id = newId('n');
+    setNodes((nds) => nds.concat({
+      id, type, position,
+      data: { ...defaults, ...(type === 'textNode' && textDefaultModel ? { processWithModel: true } : {}) },
+    }));
+    if (connection) {
+      const params = getAutoConnectParams({ connection, nodeId: id, nodeType: type });
+      if (params) {
+        setEdges((eds) => addEdge({ ...params, animated: true, markerEnd: { type: MarkerType.ArrowClosed } }, eds));
+      } else {
+        notify('模块已添加，但没有兼容的连接端口');
+      }
+    }
+    return id;
+  }, [setNodes, setEdges, screenToFlowPosition, pushHistory, freeSpot, notify, textDefaultModel]);
 
-  /* 整理画布（对齐 LibTV 的 Alt+Shift+F）：按现有坐标的行列顺序，
-     把节点重新排到 560×440 的整齐网格上，消除重叠与参差。 */
+  /* 整理画布：图片、视频分别纵向成列，其他节点放在独立列。 */
   const autoLayout = useCallback(() => {
     const list = [...nodesRef.current];
     if (list.length < 2) { notify('至少要有两个节点才需要整理'); return; }
     pushHistory();
-    const cellW = 560; const cellH = 440;
-    const cols = Math.max(1, Math.round(Math.sqrt(list.length)));
-    const sorted = [...list].sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
-    const originX = Math.min(...list.map((n) => n.position.x));
-    const originY = Math.min(...list.map((n) => n.position.y));
-    const posOf = new Map();
-    sorted.forEach((n, i) => {
-      posOf.set(n.id, {
-        x: Math.round(originX + (i % cols) * cellW),
-        y: Math.round(originY + Math.floor(i / cols) * cellH),
-      });
-    });
+    const posOf = getAutoLayoutPositions(list);
     setNodes((nds) => nds.map((n) => (posOf.has(n.id) ? { ...n, position: posOf.get(n.id) } : n)));
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 60);
     notify(`已整理 ${list.length} 个节点`);
@@ -265,6 +298,26 @@ export default function CanvasView({ notify }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [autoLayout]);
 
+  /* 撤销 / 重做快捷键：Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z 重做。
+     在输入框 / 文本域 / contenteditable 内按 Ctrl+Z 时放行，保留浏览器原生的文本撤销，不抢。
+     只在命中处理时才 preventDefault，避免影响其它组合键。 */
+  useEffect(() => {
+    const isEditable = (el) => {
+      if (!el || !el.tagName) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
+    };
+    const onKey = (e) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || (e.key !== 'z' && e.key !== 'Z')) return;
+      if (isEditable(e.target)) return; // 输入场景交给浏览器原生撤销
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
+
   const run = useCallback(async (targetIds) => {
     const targets = targetIds?.length ? targetIds : [];
     const affected = targets.length
@@ -274,7 +327,7 @@ export default function CanvasView({ notify }) {
     setProgress({ done: 0, total: 0 });
     setNodes((nds) => nds.map((n) => {
       const hit = !affected || affected.has(n.id);
-      if (!hit || ['textNode', 'noteNode', 'uploadNode', 'assetNode', 'scriptNode', 'audioNode'].includes(n.type)) return n;
+      if (!hit || ['noteNode', 'uploadNode', 'assetNode', 'scriptNode', 'audioNode'].includes(n.type)) return n;
       return { ...n, data: { ...n.data, status: 'running', error: null } };
     }));
 
@@ -357,11 +410,28 @@ export default function CanvasView({ notify }) {
   }, [screenToFlowPosition]);
 
   const onPaneDoubleClick = useCallback((event) => {
-    // 双击节点内部 / 菜单内部不触发
+    // 双击节点内部 / 菜单内部 / 连线 不触发添加节点菜单
     if (event.target?.closest?.('.react-flow__node')) return;
     if (event.target?.closest?.('.palette')) return;
+    // 连线在 .react-flow__edge 上（不在 node 上）：排除它，避免「双击断开」的同时弹出添加菜单
+    if (event.target?.closest?.('.react-flow__edge')) return;
     event.preventDefault();
     setPalette({ flow: screenToFlowPosition({ x: event.clientX, y: event.clientY }) });
+  }, [screenToFlowPosition]);
+
+  const onConnectEnd = useCallback((event, connectionState) => {
+    if (!connectionState?.fromNode || !connectionState.fromHandle || connectionState.toNode) return;
+    const point = event.changedTouches?.[0] || event;
+    const target = document.elementFromPoint(point.clientX, point.clientY);
+    if (!target?.closest?.('.react-flow__pane') || target.closest('.react-flow__node, .react-flow__edge, .react-flow__controls, .react-flow__minimap, .palette')) return;
+    setPalette({
+      flow: screenToFlowPosition({ x: point.clientX, y: point.clientY }),
+      connection: {
+        nodeId: connectionState.fromNode.id,
+        handleType: connectionState.fromHandle.type,
+        handleId: connectionState.fromHandle.id,
+      },
+    });
   }, [screenToFlowPosition]);
 
   const onDrop = useCallback(async (event) => {
@@ -424,10 +494,19 @@ export default function CanvasView({ notify }) {
   const ctx = useMemo(() => ({
     updateNode, deleteNode, runNode: (id) => run([id]), openSnippets, refsOf,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
+    textModels: modelGroups?.text || [],
+    textDefaultModel,
     imageModels: modelGroups?.image || [],
+    imageProviders: imageProviders || [],
+    imageDefaultProvider: imageDefaultProvider || null,
     videoModels: modelGroups?.video || [],
-    openStyles: () => setView?.('styles'),
-  }), [updateNode, deleteNode, run, openSnippets, refsOf, notify, modelGroups, setView]);
+    videoDefaultModel: videoDefaultModel || '',
+    videoModelCapabilities: videoModelCapabilities || {},
+    videoModelPrices: videoModelPrices || {},
+    videoProviders: videoProviders || [],
+    videoDefaultProvider: videoDefaultProvider || null,
+    openStyles: () => openProject?.(script?.id, 'assets'),
+  }), [updateNode, deleteNode, run, openSnippets, refsOf, notify, modelGroups, textDefaultModel, imageProviders, imageDefaultProvider, videoProviders, videoDefaultProvider, videoDefaultModel, videoModelCapabilities, videoModelPrices, openProject, script?.id]);
 
   return (
     <CanvasCtx.Provider value={ctx}>
@@ -444,12 +523,7 @@ export default function CanvasView({ notify }) {
         <button className="ghost tiny" title="新建画布" onClick={() => createCanvas(false)}>＋</button>
         <button className="ghost tiny" title="删除画布" onClick={removeCanvas}>×</button>
         <div className="sep" />
-        {/* 视图标签页（对齐 LibTV 的画布 / 工作流 / 故事板） */}
-        <div className="cv-tabs">
-          <button className="cv-tab on">画布</button>
-          <button className="cv-tab" title="剧本 → 脚本生成器" onClick={() => setView?.('production')}>工作流</button>
-          <button className="cv-tab" title="分镜表与批量出图出片" onClick={() => setView?.('storyboard')}>故事板</button>
-        </div>
+        <div className="cv-tabs"><button className="cv-tab on">画布</button></div>
         <div className="spacer" />
         {progress.total > 0 && running && (
           <span className="pill" style={{ minWidth: 120 }}>
@@ -459,8 +533,8 @@ export default function CanvasView({ notify }) {
             <span style={{ marginLeft: 6, fontSize: 12 }}>{progress.done}/{progress.total}</span>
           </span>
         )}
-        <button className="ghost tiny" title="撤销" onClick={undo} disabled={!history.length}>↶</button>
-        <button className="ghost tiny" title="重做" onClick={redo}>↷</button>
+        <button className="ghost tiny" title="撤销 (Ctrl+Z)" onClick={undo} disabled={!canUndo}>↶</button>
+        <button className="ghost tiny" title="重做 (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}>↷</button>
         <span className="pill">{savedAt ? `已保存 ${savedAt.toLocaleTimeString('zh-CN')}` : '未保存'}</span>
         <button className="ghost" title="打开 Agent 应用" onClick={() => setView?.('agents')}>
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ marginRight: 5, verticalAlign: -2 }}>
@@ -479,7 +553,9 @@ export default function CanvasView({ notify }) {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onSelectionChange={({ nodes: sel }) => setSelectedIds(sel.map((n) => n.id))}
+          onConnectEnd={onConnectEnd}
+          onEdgeDoubleClick={onEdgeDoubleClick}
+          onSelectionChange={onSelectionChange}
           onMoveEnd={(_, vp) => setViewport(vp)}
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={() => setPalette(null)}
@@ -488,7 +564,6 @@ export default function CanvasView({ notify }) {
           snapGrid={[18, 18]}
           defaultViewport={viewport}
           fitView={false}
-          proOptions={{ hideAttribution: true }}
           deleteKeyCode={['Backspace', 'Delete']}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#dfe3e8" />
@@ -505,17 +580,17 @@ export default function CanvasView({ notify }) {
               双击画布 · 自由生成节点
             </div>
             <div className="cv-empty-cards">
-              <button className="cv-ecard e0" onClick={() => setView?.('production')}>
+              <button className="cv-ecard e0" onClick={() => addNode('scriptNode')}>
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M6 3h9l5 5v13H6zM15 3v5h5" />
                 </svg>
-                <b>故事脚本生成</b>
+                <b>添加脚本节点</b>
               </button>
-              <button className="cv-ecard e1" onClick={() => setView?.('characters')}>
+              <button className="cv-ecard e1" onClick={() => addNode('batchUploadNode')}>
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0" />
                 </svg>
-                <b>角色三视图</b>
+                <b>导入资源节点</b>
               </button>
               <button className="cv-ecard e2" onClick={() => addNode('imageNode')}>
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -545,15 +620,6 @@ export default function CanvasView({ notify }) {
           <button className="cv-dock-btn" title="片段库（提示词模板）"
             onClick={() => { setSnippetTarget(selectedIds[0] || null); setShowSnippets((v) => !v); }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
-          </button>
-          <button className="cv-dock-btn" title="素材库" onClick={() => setView?.('media')}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18v12H3zM8 6l1.5-2h5L16 6M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /></svg>
-          </button>
-          <button className="cv-dock-btn" title="角色库" onClick={() => setView?.('characters')}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0" /></svg>
-          </button>
-          <button className="cv-dock-btn" title="生成历史" onClick={() => setView?.('media')}>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 8v4l3 2M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3 4v4h4" /></svg>
           </button>
           <button className="cv-dock-btn" title="快捷键" onClick={() => setShowHelp(true)}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 7h16v10H4zM7 10h.01M10 10h.01M13 10h.01M16 10h.01M9 14h6" /></svg>
@@ -609,7 +675,15 @@ export default function CanvasView({ notify }) {
 
         <NodePalette
           open={!!palette}
-          onPick={(type) => { addNode(type, palette.flow); setPalette(null); }}
+          onPick={(item) => {
+            if (item && typeof item === 'object') {
+              if (item.action === 'assets') setView?.('characters');
+              if (item.action === 'history') setView?.('media');
+            } else {
+              addNode(item, palette.flow, palette.connection);
+            }
+            setPalette(null);
+          }}
           onClose={() => setPalette(null)}
         />
 

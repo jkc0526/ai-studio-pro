@@ -14,6 +14,7 @@ import { EventEmitter } from 'node:events';
 import { callLLM, callImage, callVideo } from './ai.js';
 import { q } from './db.js';
 import { concatClips } from './export.js';
+import { getVideoDurationRange } from '../shared/videoCapabilities.js';
 
 const MAX_UPSTREAM_CHARS = 12000;
 const clip = (s) => (s.length > MAX_UPSTREAM_CHARS ? s.slice(0, MAX_UPSTREAM_CHARS) + '\n…(已截断)' : s);
@@ -166,18 +167,83 @@ function pickRefUrl(node, prompt, upstreamNodes, wantType = 'image') {
   return wantType === 'image' ? findUpstreamImage(upstreamNodes) : null;
 }
 
+/* 取上游某类型素材的 URL 有序列表（供「全能参考 / 首尾帧」等需要多张图的模式使用）：
+   优先按提示词里的 @图片N 引用顺序，其次按连线顺序，最后回落「上游最后一张图」。 */
+const isPassableMediaUrl = (u) => typeof u === 'string'
+  && (u.startsWith('http') || u.startsWith('data:') || u.startsWith('/outputs/'));
+
+function pickRefUrls(node, prompt, upstreamNodes, wantType = 'image') {
+  const list = Array.isArray(node.data?.mediaRefs) ? node.data.mediaRefs : [];
+  const ofType = list.filter((r) => r && r.type === wantType && isPassableMediaUrl(r.url));
+  const mentioned = [];
+  for (const key of mentionKeys(prompt)) {
+    const hit = ofType.find((r) => r.key === key);
+    if (hit && !mentioned.includes(hit.url)) mentioned.push(hit.url);
+  }
+  if (mentioned.length) return mentioned;
+  if (ofType.length) return ofType.map((r) => r.url);
+  if (wantType === 'image') {
+    const one = findUpstreamImage(upstreamNodes);
+    return isPassableMediaUrl(one) ? [one] : [];
+  }
+  return [];
+}
+
+/* 视频秒数：Agnes Video 只接受 "4"~"12"，越界会 400，这里收敛到合法区间（缺省 5）。 */
+function clampVideoSeconds(value, modelId, capability) {
+  const range = getVideoDurationRange(modelId, capability);
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return Math.min(range.max, Math.max(range.min, 5));
+  return Math.min(range.max, Math.max(range.min, n));
+}
+
+/* 前端分辨率 → 网关 size 枚举。Agnes Video 仅接受 "720P" / "960P" / "2K"
+   （2.5-flash 仅支持 "720P"），不支持的值一律回落到 "720P"，避免严格网关因非法枚举 400。 */
+function resolveVideoSize(resolution) {
+  const key = String(resolution || '').toLowerCase().replace(/\s+/g, '');
+  if (key === '2k') return '2K';
+  if (key === '960p') return '960P';
+  return '720P';
+}
+
+/* 「图生视频」类调用（分镜 / 剧情片出片，单镜与批量共用）的统一入参：
+   有参考图 → mode='keyframe' + first_frame；无图 → mode='text'。
+   注意：Agnes 在 keyframe 模式下禁止 images 字段，故此函数只产出 first_frame，
+   绝不产出 image / images，避免 image 与 first_frame 同时出现被网关拒绝。
+   时长 / size 分别复用 clampVideoSeconds / resolveVideoSize，保证与画布视频节点一致。 */
+function videoArgsForImage({ image, duration, ratio, resolution } = {}) {
+  const firstFrame = isPassableMediaUrl(image) ? image : null;
+  return {
+    mode: firstFrame ? 'keyframe' : 'text',
+    firstFrame,
+    duration: clampVideoSeconds(duration),
+    size: resolveVideoSize(resolution),
+    ratio: ratio || undefined,
+  };
+}
+
 /** 送给模型的提示词里不要留 @ 记号（模型不认识），换成可读的「参考图N」 */
 const stripMentions = (prompt) => String(prompt || '')
   .replace(/@\s*(图片|视频)\s*(\d+)/g, (_, t, n) => (t === '图片' ? `参考图${n}` : `参考视频${n}`))
   .trim();
 
-// 供测试直接断言 @ 引用解析（test/agent-e2e 之外的小单测）
-export { mentionKeys, stripMentions, pickRefUrl };
+// 供测试直接断言 @ 引用解析与视频参数收敛（test/agent-e2e 之外的小单测）
+export { mentionKeys, stripMentions, pickRefUrl, pickRefUrls, clampVideoSeconds, resolveVideoSize, videoArgsForImage };
 
 /* ---------- 4. 节点 handler 注册表 ---------- */
 const HANDLERS = {
-  textNode(node, ctx) {
-    return { text: clip(node.data?.content || '') };
+  async textNode(node, ctx) {
+    const content = String(node.data?.content || '');
+    if (!node.data?.processWithModel) return { text: clip(content) };
+    if (!content.trim()) throw new Error('请先输入要处理的文本');
+    const result = await callLLM(ctx.configs.thinking, {
+      model: node.data?.modelId,
+      user: content,
+    });
+    return {
+      text: clip(result.text),
+      extra: { modelUsed: result.model, tokens: result.usage?.total_tokens ?? null },
+    };
   },
   noteNode(node, ctx) {
     return { text: clip(node.data?.content || '') };
@@ -224,6 +290,7 @@ const HANDLERS = {
     const imageUrl = pickRefUrl(node, node.data?.prompt || '', ctx.upstreamNodes, 'image');
     const r = await callImage(ctx.configs.image_gen, {
       model: node.data?.modelId,
+      providerId: node.data?.providerId,
       prompt: stripMentions(prompt),
       image: imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/')) ? imageUrl : undefined,
       size: node.data?.size || '1024x1024',
@@ -250,23 +317,57 @@ const HANDLERS = {
     };
   },
   async videoNode(node, ctx) {
-    const mode = node.data?.mode || 'text';
+    const uiMode = node.data?.mode || 'text';
     const prompt = buildPrompt(node, ctx.upstreamTexts) || (node.data?.prompt || '');
-    // 文生视频不需要上游图；其余模式（全能参考/图生视频/首尾帧）需要
-    const needImage = mode !== 'text';
-    // @图片N 优先；没写 mention 时取上游最后一张图（与旧行为一致）
-    const imageUrl = needImage ? pickRefUrl(node, node.data?.prompt || '', ctx.upstreamNodes, 'image') : null;
-    if (needImage && !imageUrl) throw new Error('该模式需要上游图片（上传/素材库/生图/分镜格子或首帧图）');
-    if (!needImage && !prompt) throw new Error('提示词为空：请描述你想生成的视频内容');
+    // 上游图片（按 @图片N 引用顺序或连线顺序）
+    const images = pickRefUrls(node, node.data?.prompt || '', ctx.upstreamNodes, 'image');
+
+    // 前端 4 个模式 → Agnes Video 的 mode 取值 + 对应媒体字段
+    //   text  → mode='text'       不传媒体
+    //   omni  → mode='reference'  images:[url...]（2.5-flash 最多 5 张）
+    //   image → mode='keyframe'   first_frame=url
+    //   frames→ mode='keyframe'   first_frame（有第二张时再传 last_frame）
+    let mode; let referenceImages; let firstFrame; let lastFrame;
+    if (uiMode === 'omni') {
+      mode = 'reference';
+      referenceImages = images.slice(0, 5);
+      if (!referenceImages.length) throw new Error('「全能参考」需要至少一张参考图：请把图片节点连到本节点左侧');
+    } else if (uiMode === 'image') {
+      mode = 'keyframe';
+      firstFrame = images[0] || null;
+      if (!firstFrame) throw new Error('「图生视频」需要一张首帧图：请把图片节点连到本节点左侧');
+    } else if (uiMode === 'frames') {
+      mode = 'keyframe';
+      firstFrame = images[0] || null;
+      lastFrame = images[1] || null;
+      if (!firstFrame) throw new Error('「首尾帧」需要一张首帧图：请把图片节点连到本节点左侧');
+    } else {
+      mode = 'text';
+    }
+    // Agnes 的 prompt 为必填，任何模式都不能为空
+    if (!prompt) throw new Error('提示词为空：请描述你想生成的视频内容（或连接上游文本节点）');
+
+    const duration = clampVideoSeconds(node.data?.duration, node.data?.modelId, node.data?.durationRange);
+    const size = resolveVideoSize(node.data?.resolution);
     const r = await callVideo(ctx.configs.video, {
       model: node.data?.modelId,
+      providerId: node.data?.providerId,
       prompt: stripMentions(prompt),
-      image: imageUrl && (imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/')) ? imageUrl : null,
-      duration: Number(node.data?.duration) || 5,
+      mode,
+      referenceImages,
+      firstFrame,
+      lastFrame,
+      duration,
+      size,
       ratio: node.data?.ratio || '16:9',
-      resolution: node.data?.resolution,
     });
-    return { url: r.url, videoUrl: r.url, kind: 'video', text: prompt || r.url, extra: { modelUsed: r.model, imageUrl } };
+    return {
+      url: r.url,
+      videoUrl: r.url,
+      kind: 'video',
+      text: prompt || r.url,
+      extra: { modelUsed: r.model, mode, imageUrl: firstFrame || referenceImages?.[0] || null },
+    };
   },
 
   /* 批量上传：把节点上的全部素材 URL 透传给下游 */
@@ -348,6 +449,8 @@ function isTransient(err) {
 function existingOutput(node) {
   const d = node.data || {};
   switch (node.type) {
+    case 'textNode':
+      return d.output || d.content ? { text: d.output || d.content, extra: { modelUsed: d.modelUsed || null } } : null;
     case 'videoNode':
       return d.videoUrl
         ? { url: d.videoUrl, videoUrl: d.videoUrl, kind: 'video', text: d.prompt || d.videoUrl, extra: {} }

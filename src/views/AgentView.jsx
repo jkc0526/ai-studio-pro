@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.js';
 import AgentEditor from '../components/AgentEditor.jsx';
+import SkillCatalog from '../components/SkillCatalog.jsx';
 
 /* ============================================================================
    Agent 应用 · 多 Agent 剧组编排页
@@ -26,7 +27,7 @@ const unpack = (step) => {
 };
 
 export default function AgentView() {
-  const { script, scripts, scriptId, selectScript, notify, setView, bumpShots } = useApp();
+  const { script, scripts, scriptId, selectScript, notify, setView, bumpShots, agentDraft, clearAgentDraft, openProject } = useApp();
 
   const [agents, setAgents] = useState([]);
   const [toolKind, setToolKind] = useState({});     // 工具名 -> kind（染色用）
@@ -39,9 +40,8 @@ export default function AgentView() {
   /* Skill 套路（对齐 LibTV 的 skill 市场） */
   const [skills, setSkills] = useState([]);
   const [skillMeta, setSkillMeta] = useState({ categories: [], kinds: [] });
-  const [skillKind, setSkillKind] = useState('全部');
-  const [skillCat, setSkillCat] = useState('全部');
   const [pickedSkill, setPickedSkill] = useState(null);   // 已套用的 Skill（含渲染结果）
+  const [showRoster, setShowRoster] = useState(false);
 
   const [run, setRun] = useState(null);             // 运行详情（含 steps）
   const [pendingAsk, setPendingAsk] = useState(null);
@@ -168,10 +168,6 @@ export default function AgentView() {
     })();
   }, []);
 
-  const shownSkills = useMemo(() => skills.filter((s) => (
-    (skillKind === '全部' || s.kind === skillKind) && (skillCat === '全部' || s.category === skillCat)
-  )), [skills, skillKind, skillCat]);
-
   /* 套用 Skill：按当前剧本渲染目标文案，并把风格/岗位/参数一起带过来 */
   const useSkill = async (s) => {
     try {
@@ -184,6 +180,20 @@ export default function AgentView() {
       notify(`已套用「${s.title}」：目标与参数已填好`);
     } catch (e) { notify(e.message, true); }
   };
+
+  useEffect(() => {
+    if (!agentDraft) return;
+    if (agentDraft.scriptId && agentDraft.scriptId !== scriptId) selectScript(agentDraft.scriptId);
+    if (agentDraft.goal) setGoal(agentDraft.goal);
+    setShowRoster(false);
+  }, [agentDraft, scriptId, selectScript]);
+
+  useEffect(() => {
+    if (!agentDraft?.skillId || !skills.length) return;
+    const skill = skills.find((item) => item.id === agentDraft.skillId);
+    if (!skill) return;
+    useSkill(skill).finally(() => clearAgentDraft?.());
+  }, [agentDraft?.skillId, skills, clearAgentDraft]);
 
   // 切换剧本 / 首次进入：接上最近一次运行（运行中则实时续流，已结束则作为回放），
   // 保证刷新页面不丢现场。想开新任务点运行台的「↺ 新任务」。
@@ -298,10 +308,12 @@ export default function AgentView() {
   return (
     <div className="ag-wrap">
       {/* ============ 左：剧组名册 ============ */}
-      <aside className="ag-side">
+      <aside className={`ag-side ${showRoster ? 'open' : ''}`}>
         <div className="ag-side-head">
-          <b>剧组名册</b>
-          <button className="ghost tiny" onClick={() => setEditing('new')}>＋ 岗位</button>
+          <b>岗位设置</b>
+          <span className="spacer" />
+          <button className="ghost tiny" onClick={() => setEditing('new')}>＋ 新建</button>
+          <button className="ghost tiny" onClick={() => setShowRoster(false)} aria-label="关闭岗位设置">×</button>
         </div>
         <div className="ag-roster">
           {!agents.length && <div className="ag-empty">还没有岗位，点右上角新建</div>}
@@ -345,67 +357,11 @@ export default function AgentView() {
         {!run ? (
           /* ---- 待启动 ---- */
           <div className="ag-launch">
-            {/* Skill 套路库：一句话起步，或直接套一个套路 */}
-            <div className="ag-skills">
-              <div className="ag-skills-head">
-                <b>Skill 全开，故事走起</b>
-                <span className="hint">套一个套路：风格 / 镜头 / 步骤 / 提示词规范一次性带齐</span>
-                <span className="spacer" />
-                <div className="ag-skills-tabs">
-                  {['全部', ...(skillMeta.kinds || [])].map((k) => (
-                    <button key={k} className={`ag-skill-tab ${skillKind === k ? 'on' : ''}`} onClick={() => setSkillKind(k)}>
-                      {k === 'video' ? '视频' : k === 'image' ? '图片' : k}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="ag-skills-cats">
-                {['全部', ...(skillMeta.categories || [])].map((c) => (
-                  <button key={c} className={`ag-cat ${skillCat === c ? 'on' : ''}`} onClick={() => setSkillCat(c)}>{c}</button>
-                ))}
-              </div>
-              <div className="ag-skills-grid">
-                {!shownSkills.length && <div className="ag-empty">该分类下还没有 Skill</div>}
-                {shownSkills.map((s) => (
-                  <div key={s.id} className={`ag-skill ${pickedSkill?.skillId === s.id ? 'on' : ''}`}>
-                    <span className="ag-skill-avatar">{s.avatar || s.title.slice(0, 2)}</span>
-                    <div className="ag-skill-body">
-                      <div className="ag-skill-title">
-                        <b>{s.title}</b>
-                        <code>/{s.command}</code>
-                        <span className={`ag-skill-kind ${s.kind}`}>{s.kind === 'image' ? '图片' : '视频'}</span>
-                      </div>
-                      <p className="ag-skill-sum">{s.summary}</p>
-                      <div className="ag-skill-meta">
-                        <span>{s.author}</span>
-                        <span>·</span>
-                        <span>{s.uses || 0} 次使用</span>
-                        {!!s.spec?.shots && <span>· {s.spec.shots} 镜 {s.spec.ratio}</span>}
-                        <span className="spacer" />
-                        <button className="ghost tiny" onClick={() => useSkill(s)}>
-                          {pickedSkill?.skillId === s.id ? '已套用' : '使用'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {pickedSkill && (
-                <div className="ag-picked">
-                  <span className="ag-picked-tag">已套用</span>
-                  <b>{pickedSkill.title}</b>
-                  <span className="hint">
-                    {pickedSkill.styleName && `风格 ${pickedSkill.styleName} · `}
-                    {pickedSkill.recipe?.length ? `${pickedSkill.recipe.length} 步流程` : ''}
-                  </span>
-                  <span className="spacer" />
-                  <button className="ghost tiny" onClick={() => { setPickedSkill(null); setGoal(''); }}>取消套用</button>
-                </div>
-              )}
-            </div>
+            <div className="ag-launch-head"><div><span className="eyebrow">AGENT WORKSPACE</span><h2>选择一个 Skill，开始一轮可确认的创作</h2><p className="hint">岗位名册、权限和预算收进设置抽屉，运行区只保留目标、时间线和产物。</p></div><button className="ghost" onClick={() => setShowRoster(true)}>⚙ 岗位设置</button></div>
+            <SkillCatalog skills={skills} meta={skillMeta} selectedId={pickedSkill?.skillId} onUse={useSkill} onClear={() => { setPickedSkill(null); setGoal(''); }} />
 
-            <div className="empty-card" style={{ maxWidth: 640, margin: '18px auto 40px' }}>
-              <h3>让 {agent ? `「${agent.name}」` : 'Agent'} 替你跑完这条流水线</h3>
+            <div className="empty-card" style={{ maxWidth: 760, margin: '18px auto 40px' }}>
+              <h3>{pickedSkill ? `已准备「${pickedSkill.title}」` : `让 ${agent ? `「${agent.name}」` : 'Agent'} 替你跑完这条流水线`}</h3>
               <p className="hint">
                 用一句话描述目标，例如「把当前剧本做成一集 8 镜的成片」。Agent 会自己查看现状、
                 写剧本、拆分镜、提角色场景、合成提示词；遇到要花钱的生图生视频会先停下来问你。
@@ -438,6 +394,7 @@ export default function AgentView() {
                 try { const sk = JSON.parse(run.skill_json); return <span className="pill ag-skill-pill">Skill · {sk.title}</span>; }
                 catch { return null; }
               })()}
+              <button className="ghost tiny" onClick={() => setShowRoster(true)}>岗位设置</button>
               <span className="spacer" />
               <span className="pill">步 {doneSteps}/{budget.maxSteps}</span>
               <span className="pill">图 {cost.images || 0}/{budget.maxImages}</span>
@@ -529,7 +486,7 @@ export default function AgentView() {
                   <b>本次产物</b>
                   <span className="pill">图 {artifacts.images.length} · 片 {artifacts.videos.length}{artifacts.movies.length ? ` · 成片 ${artifacts.movies.length}` : ''}</span>
                   <span className="spacer" />
-                  <button className="ghost tiny" onClick={() => setView('storyboard')}>去分镜页查看 →</button>
+                  <button className="ghost tiny" onClick={() => openProject?.(script?.id, 'storyboard')}>去分镜页查看 →</button>
                 </div>
                 {!!artifacts.movies.length && (
                   <div className="ag-movies">

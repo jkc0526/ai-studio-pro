@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.js';
+import ScriptGenerator from '../components/ScriptGenerator.jsx';
 
 export default function ScriptView() {
-  const { script, createScript, updateScript, deleteScript, styleId, modelGroups, modelDefaults, notify, setView, bumpShots, reloadCharacters } = useApp();
+  const { script, createScript, updateScript, deleteScript, styleId, modelGroups, notify, setView, bumpShots, reloadCharacters } = useApp();
   const [form, setForm] = useState({ title: '', outline: '', content: '' });
   const [count, setCount] = useState(6);
   const [model, setModel] = useState('');
@@ -97,6 +98,7 @@ export default function ScriptView() {
         <button onClick={extract} disabled={!!busy || !form.content.trim()}>
           {busy === 'extract' ? '识别中…' : '② 从剧本提取角色'}
         </button>
+        <ScriptGenerator form={form} />
         <div className="sep" />
         <button onClick={() => setView('storyboard')}>去分镜 →</button>
         <div className="spacer" />

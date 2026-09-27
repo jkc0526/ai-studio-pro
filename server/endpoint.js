@@ -10,10 +10,70 @@ import { OUTPUT_DIR, uid } from './db.js';
    ============================================================ */
 
 const trimSlash = (u) => String(u || '').replace(/\/+$/, '');
+const LOCAL_OUTPUT_REF_RE = /^\/outputs\/([A-Za-z0-9][A-Za-z0-9._-]{0,240})$/;
+const IMAGE_REFERENCE_FIELDS = new Set(['image', 'images', 'first_frame', 'last_frame', 'image_url', 'firstFrame', 'lastFrame', 'imageUrl']);
+const MAX_REFERENCE_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_REFERENCE_PAYLOAD_BYTES = 24 * 1024 * 1024;
+
+function localOutputPath(value) {
+  if (typeof value !== 'string') return null;
+  if (value.startsWith('/outputs/')) return value;
+  try {
+    const url = new URL(value);
+    const loopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase());
+    if (loopback && url.pathname.startsWith('/outputs/')) return url.pathname;
+  } catch { /* not an absolute URL */ }
+  return null;
+}
+
+function imageMimeFromBytes(buffer) {
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buffer.length >= 6 && ['GIF87a', 'GIF89a'].includes(buffer.toString('ascii', 0, 6))) return 'image/gif';
+  return null;
+}
+
+async function encodeLocalImageReference(value, encoding, budget) {
+  const localPath = localOutputPath(value);
+  if (!localPath) return value;
+  const match = localPath.match(LOCAL_OUTPUT_REF_RE);
+  if (!match) throw new Error('参考图本地地址无效');
+  const outputRoot = await fs.promises.realpath(OUTPUT_DIR);
+  const candidate = path.resolve(outputRoot, match[1]);
+  if (path.dirname(candidate) !== outputRoot) throw new Error('参考图路径无效');
+  let resolved; let stat;
+  try {
+    resolved = await fs.promises.realpath(candidate);
+    stat = await fs.promises.stat(resolved);
+  } catch { throw new Error('找不到本地参考图，请重新上传或连接图片节点'); }
+  const relative = path.relative(outputRoot, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !stat.isFile()) throw new Error('参考图路径无效');
+  if (stat.size > MAX_REFERENCE_IMAGE_BYTES) throw new Error('单张参考图不能超过 12 MB');
+  const bytes = await fs.promises.readFile(resolved);
+  if (bytes.length > MAX_REFERENCE_IMAGE_BYTES) throw new Error('单张参考图不能超过 12 MB');
+  const mime = imageMimeFromBytes(bytes);
+  if (!mime) throw new Error('参考图格式无法识别，请使用 PNG、JPEG、WebP 或 GIF');
+  budget.bytes += bytes.length;
+  if (budget.bytes > MAX_REFERENCE_PAYLOAD_BYTES) throw new Error('参考图总大小不能超过 24 MB');
+  const base64 = bytes.toString('base64');
+  return encoding === 'base64' ? base64 : `data:${mime};base64,${base64}`;
+}
+
+async function encodeLocalImageReferences(value, encoding, budget, field = '') {
+  if (Array.isArray(value)) return Promise.all(value.map((item) => encodeLocalImageReferences(item, encoding, budget, field)));
+  if (!value || typeof value !== 'object') {
+    return IMAGE_REFERENCE_FIELDS.has(field) ? encodeLocalImageReference(value, encoding, budget) : value;
+  }
+  const entries = await Promise.all(Object.entries(value).map(async ([key, child]) =>
+    [key, await encodeLocalImageReferences(child, encoding, budget, key)]));
+  return Object.fromEntries(entries);
+}
 
 export const PROTOCOLS = [
   { key: 'openai', name: 'OpenAI 兼容（推荐）', hint: '文本 /chat/completions，图像 /images/generations，视频 /video/generations' },
   { key: 'openai-video', name: 'OpenAI 视频协议', hint: '提交 /video/generations，轮询 /videos/{id}' },
+  { key: 'agnes-video', name: 'Agnes 视频', hint: '提交 /videos，轮询服务根路径 /agnesapi；支持文本、参考图与首尾帧模式' },
   { key: 'anthropic', name: 'Anthropic Messages', hint: '文本 /messages（Claude 系列）' },
   { key: 'gemini', name: 'Google Gemini', hint: '文本 /models/{model}:generateContent' },
 ];
@@ -92,22 +152,76 @@ function digText(obj, depth = 0) {
 /* ---------------- 内置协议 → spec ---------------- */
 export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars }) {
   const base = trimSlash(baseURL);
+  if (kind === 'video' && protocol === 'agnes-video') {
+    // Agnes 的视频结果查询接口位于 host 根路径，不在兼容 API 的 /v1 前缀下。
+    const pollOrigin = new URL(base).origin;
+    const validModes = ['text', 'reference', 'keyframe'];
+    if (!validModes.includes(vars.mode)) {
+      throw new Error(`Agnes 视频缺少有效的 mode（支持：${validModes.join(' / ')}）`);
+    }
+    const hasSeconds = vars.seconds !== undefined && vars.seconds !== null && vars.seconds !== '';
+    const secondsValue = Number(vars.seconds);
+    const seconds = hasSeconds
+      ? String(Number.isFinite(secondsValue) ? Math.min(30, Math.max(4, Math.round(secondsValue))) : 5)
+      : undefined;
+    const body = { model, prompt: vars.prompt, mode: vars.mode };
+    if (seconds !== undefined) body.seconds = seconds;
+    if (vars.ratio) body.aspect_ratio = vars.ratio;
+    if (vars.mode === 'reference') {
+      if (Array.isArray(vars.images) && vars.images.length) body.images = vars.images;
+      if (Array.isArray(vars.audios) && vars.audios.length) body.audios = vars.audios;
+    } else if (vars.mode === 'keyframe') {
+      if (vars.firstFrame) body.first_frame = vars.firstFrame;
+      if (vars.lastFrame) body.last_frame = vars.lastFrame;
+    }
+    return {
+      method: 'POST',
+      url: `${base}/videos`,
+      body,
+      referenceImageEncoding: 'base64',
+      resultType: 'url',
+      idKeys: ['video_id', 'id', 'task_id'],
+      poll: {
+        url: `${pollOrigin}/agnesapi?video_id={{id}}&model_name=${encodeURIComponent(model || '')}`,
+        interval: 1500, max: 240,
+        statusPath: 'status',
+        doneValues: ['completed', 'succeeded', 'success', 'done'],
+        failValues: ['failed', 'error', 'canceled', 'cancelled'],
+        resultPath: 'url',
+      },
+    };
+  }
   if (kind === 'video' || protocol === 'openai-video') {
+    const supportedMode = protocol !== 'openai-video'
+      && ['text', 'reference', 'keyframe'].includes(vars.mode);
+    const seedanceDuration = /seedance[\s._-]*2[\s._-]*[05]/i.test(String(model || ''))
+      ? Number(vars.seconds ?? vars.duration) : null;
     return {
       method: 'POST',
       url: `${base}/video/generations`,
       body: {
         model, prompt: vars.prompt,
-        ...(vars.image ? { image: vars.image } : {}),
-        // duration / aspect_ratio 暂不上传：不同网关字段名差异大，且严格网关会 400
-        // （如 agnes-video-2.5 报 duration is not an allowed request field）
-        // 后续若某网关需要，可在 provider extra_json 里配置扩展字段
+        ...(!supportedMode && vars.image ? { image: vars.image } : {}),
+        ...(supportedMode ? { mode: vars.mode } : {}),
+        ...(supportedMode && seedanceDuration === null && vars.seconds !== undefined && vars.seconds !== null && vars.seconds !== ''
+          ? { seconds: String(vars.seconds) } : {}),
+        ...(supportedMode && vars.mode === 'reference' && Array.isArray(vars.images) && vars.images.length
+          ? { images: vars.images } : {}),
+        ...(supportedMode && vars.mode === 'reference' && Array.isArray(vars.audios) && vars.audios.length
+          ? { audios: vars.audios } : {}),
+        ...(supportedMode && vars.mode === 'keyframe' && vars.firstFrame ? { first_frame: vars.firstFrame } : {}),
+        ...(supportedMode && vars.mode === 'keyframe' && vars.lastFrame ? { last_frame: vars.lastFrame } : {}),
         ...(vars.ratio ? { aspect_ratio: vars.ratio } : {}),
+        ...(Number.isFinite(seedanceDuration) && seedanceDuration > 0 ? { duration: seedanceDuration } : {}),
+        // 本地桥接（comfy-bridge）需要这两个字段翻译成 ComfyUI 宽高/帧数
+        ...(vars.duration ? { duration: vars.duration } : {}),
+        ...(vars.resolution ? { resolution: vars.resolution } : {}),
       },
       resultType: 'url',
       poll: {
         url: `${base}/videos/{{id}}`,
-        interval: 5000, max: 120,
+        // H3 视频在 4090 上要跑 15-20 分钟，10 分钟轮询会超时拿不到结果
+        interval: 10000, max: 300,
         statusPath: 'status',
         doneValues: ['completed', 'succeeded', 'success', 'done'],
         failValues: ['failed', 'error', 'canceled', 'cancelled'],
@@ -117,16 +231,24 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
     };
   }
   if (kind === 'image') {
+    const isAgnesImage = protocol === 'agnes-video' || /^agnes-image-/i.test(model || '');
     return {
       method: 'POST',
       url: `${base}/images/generations`,
-      body: {
-        model, prompt: vars.prompt, n: 1,
-        // 参考图（@图片N 引用 / 上游连线）：只发标准 image 字段，部分网关会拒绝 image_url
-        ...(vars.image ? { image: vars.image } : {}),
-        ...(vars.size ? { size: vars.size } : {}),
-        response_format: 'b64_json',
-      },
+      body: isAgnesImage
+        ? {
+            model, prompt: vars.prompt, n: 1,
+            ...(vars.size ? { size: vars.size } : {}),
+            // Agnes 图片编辑协议将参考图放入 extra_body.image 数组；本地引用在 execute 前编码成 Data URI。
+            ...(vars.image ? { extra_body: { image: [vars.image], response_format: 'url' } } : {}),
+          }
+        : {
+            model, prompt: vars.prompt, n: 1,
+            // 参考图（@图片N 引用 / 上游连线）：只发标准 image 字段，部分网关会拒绝 image_url
+            ...(vars.image ? { image: vars.image } : {}),
+            ...(vars.size ? { size: vars.size } : {}),
+            response_format: 'b64_json',
+          },
       resultType: 'auto',
     };
   }
@@ -271,10 +393,13 @@ async function materialize(value, kind) {
  * @returns {{kind:'text'|'media', text?:string, url?:string|null, raw:object, polls:number}}
  */
 export async function execute({ spec, apiKey, kind, retry429 = true }) {
+  const body = kind === 'image' || kind === 'video'
+    ? await encodeLocalImageReferences(spec.body, spec.referenceImageEncoding || 'data-uri', { bytes: 0 })
+    : spec.body;
   let attempt = 0;
   let res;
   while (true) {
-    res = await fetchJson(spec.url, { method: spec.method, headers: spec.headers, body: spec.body, apiKey });
+    res = await fetchJson(spec.url, { method: spec.method, headers: spec.headers, body, apiKey });
     if (res.ok) break;
     if (res.status === 429 && retry429 && attempt < 3) {
       await sleep([8000, 20000, 40000][attempt]);
@@ -314,7 +439,7 @@ export async function execute({ spec, apiKey, kind, retry429 = true }) {
   }
 
   // 异步任务：轮询
-  const id = digAnyId(json);
+  const id = spec.idKeys ? digFirstKey(json, spec.idKeys) : digAnyId(json);
   if (!spec.poll || !id) {
     throw new Error(`接口未返回可识别的结果（响应字段：${Object.keys(json).join(',')}）`);
   }
@@ -350,12 +475,13 @@ export async function execute({ spec, apiKey, kind, retry429 = true }) {
    能访问 → 返回 400 prompt is required；无权限 → 403 / 503 model_not_found。不消耗生成额度。 */
 export async function probeModel({ kind, baseURL, apiKey, model, protocol = 'openai' }) {
   const base = trimSlash(baseURL);
-  const url = kind === 'video' ? `${base}/video/generations`
+  const isAgnesVideo = kind === 'video' && protocol === 'agnes-video';
+  const url = isAgnesVideo ? `${base}/videos` : kind === 'video' ? `${base}/video/generations`
     : kind === 'image' ? `${base}/images/generations`
       : `${base}/chat/completions`;
   const body = kind === 'text'
     ? { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }
-    : { model };
+    : isAgnesVideo ? { model, mode: 'text' } : { model };
   try {
     const res = await fetchJson(url, { method: 'POST', body, apiKey });
     const text = (res.text || '').replace(/\s+/g, ' ');
@@ -369,6 +495,14 @@ export async function probeModel({ kind, baseURL, apiKey, model, protocol = 'ope
   } catch (e) {
     return { state: 'error', detail: e.message };
   }
+}
+
+export function digFirstKey(obj, keys) {
+  for (const key of keys || []) {
+    const value = pick(obj, key);
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return null;
 }
 
 export { digText, digAnyId };

@@ -5,6 +5,7 @@ import * as pipeline from './pipeline.js';
 import * as videoMod from './video.js';
 import * as exporter from './export.js';
 import { callLLM } from './ai.js';
+import { videoArgsForImage } from './engine.js';
 
 /* ============================================================================
    Agent 工具注册表
@@ -628,13 +629,14 @@ export const TOOLS = {
         const shot = q.one('SELECT * FROM shot WHERE id = ?', s.id);
         q.run('UPDATE shot SET status = ?, error = NULL, update_time = ? WHERE id = ?', 'video', now(), shot.id);
         try {
-          const dataUrl = `data:image/png;base64,${fs.readFileSync(needImage(shot.image_url, `镜头 ${shot.seq}`)).toString('base64')}`;
+          // 每镜独立判定：有分镜图 → keyframe(first_frame)，无图 → text（统一走 videoArgsForImage）
+          const dataUrl = shot.image_url
+            ? `data:image/png;base64,${fs.readFileSync(needImage(shot.image_url, `镜头 ${shot.seq}`)).toString('base64')}`
+            : null;
           const out = await videoMod.callVideo('video', {
             model,
             prompt: videoPromptFor(shot),
-            image: dataUrl,
-            duration: Math.min(10, Math.max(5, Math.round(Number(shot.duration) || 5))),
-            ratio: shot.ratio || undefined,
+            ...videoArgsForImage({ image: dataUrl, duration: Number(shot.duration) || 5, ratio: shot.ratio || undefined }),
           });
           q.run('UPDATE shot SET video_url = ?, status = ?, error = NULL, update_time = ? WHERE id = ?', out.url, 'done', now(), shot.id);
           videoMod.recordMedia({

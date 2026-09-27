@@ -129,7 +129,7 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
         const prompt = buildPrompt(node, upstreamTexts);
         if (!prompt) throw new Error('提示词为空：请填写画面描述或连接上游节点');
         const r = await callImage(configs.image_gen, {
-          model: node.data?.modelId, prompt, size: node.data?.size || '1024x1024',
+          model: node.data?.modelId, providerId: node.data?.providerId, prompt, size: node.data?.size || '1024x1024',
         });
         outputs.set(id, { url: r.url, text: prompt });
         patches.push({ nodeId: id, data: { imageUrl: r.url, promptUsed: prompt, status: 'done', error: null, modelUsed: r.model, ranAt: new Date().toISOString() } });
@@ -170,6 +170,7 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
           image: imageUrl.startsWith('http') || imageUrl.startsWith('data:') || imageUrl.startsWith('/outputs/') ? imageUrl : null,
           duration: Number(node.data?.duration) || 5,
           ratio: node.data?.ratio || '16:9',
+          resolution: node.data?.resolution || '1080p',
         });
         outputs.set(id, { url: r.url, text: r.url });
         patches.push({

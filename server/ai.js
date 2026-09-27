@@ -20,12 +20,15 @@ export function resolveTarget(kindOrPurpose, arg = {}, override = {}) {
     : q.one('SELECT * FROM ai_config WHERE purpose = ?', purpose);
   if (!cfg) throw new Error('未找到模型配置，请先到「设置」里配置');
 
-  const custom = override.customApiId
+  const custom = override.providerId ? null : override.customApiId
     ? q.one('SELECT * FROM custom_api WHERE id = ?', override.customApiId)
     : cfg.custom_api_id ? q.one('SELECT * FROM custom_api WHERE id = ?', cfg.custom_api_id) : null;
   const provider = custom ? null
     : (override.providerId ? q.one('SELECT * FROM provider WHERE id = ?', override.providerId)
       : cfg.provider_id ? q.one('SELECT * FROM provider WHERE id = ?', cfg.provider_id) : null);
+
+  if (override.providerId && !provider) throw new Error('所选供应商不存在，请重新选择');
+  if (provider && !provider.enabled) throw new Error(`供应商「${provider.name}」已停用，请到设置中启用后重试`);
 
   const baseURL = override.baseURL || provider?.base_url || cfg.base_url || '';
   const apiKey = override.apiKey || provider?.api_key || cfg.api_key || '';
@@ -62,22 +65,58 @@ export async function callLLM(arg, { model, system, user, maxTokens } = {}) {
 }
 
 /* ---------------- 图像 ---------------- */
-export async function callImage(arg, { model, prompt, image, size = '1024x1536' } = {}) {
-  const t = resolveTarget('image', arg, { model });
+export async function callImage(arg, { model, providerId, prompt, image, size = '1024x1536' } = {}) {
+  const t = resolveTarget('image', arg, { model, providerId });
   const spec = specFor('image', t, { prompt, image, size, model: t.model });
   const out = await execute({ spec, apiKey: t.apiKey, kind: 'image' });
   return { url: out.url, model: t.model, raw: out.raw, polls: out.polls };
 }
 
-/* ---------------- 视频 ---------------- */
-export async function callVideo(arg, { model, prompt, image, duration = 5, ratio, resolution } = {}) {
-  const t = resolveTarget('video', arg, { model });
-  const spec = specFor('video', t, { prompt, image, duration, ratio, resolution, model: t.model });
+/* ---------------- 视频 ----------------
+   入参说明（mode 系列为可选；不传则沿用旧的最小请求体，保持对既有调用方兼容）：
+   - mode：Agnes 视频 mode（'text' | 'keyframe' | 'reference'）
+   - referenceImages：reference 模式的参考图 URL 列表
+   - firstFrame / lastFrame：keyframe 模式的首帧 / 尾帧 URL
+   - size：网关分辨率枚举（如 '720P'），与前端分辨率解耦
+   - audios：可选的音频参考 URL 列表                                            */
+export async function callVideo(arg, {
+  model, providerId, prompt, image, duration = 5, ratio, resolution,
+  mode, referenceImages, firstFrame, lastFrame, audios, size,
+} = {}) {
+  const t = resolveTarget('video', arg, { model, providerId });
+  const spec = specFor('video', t, {
+    model: t.model,
+    prompt,
+    mode,
+    images: referenceImages,
+    audios,
+    firstFrame,
+    lastFrame,
+    seconds: duration,
+    duration: t.custom ? duration : undefined,
+    size: size || resolution,
+    ratio,
+    image,
+  });
   const out = await execute({ spec, apiKey: t.apiKey, kind: 'video' });
   return { url: out.url, sourceUrl: out.sourceUrl, model: t.model, raw: out.raw, polls: out.polls };
 }
 
 /* ---------------- 冒烟测试（设置页「测试连接」） ---------------- */
+
+/**
+ * 深度测试用的最小探活入参。
+ * 注意：video + protocol='agnes-video' 必须带 mode（Agnes 把 mode 作为必填，缺失会 400，
+ * 会让配置正确的用户误看到「真实调用失败」）；这里用最轻量的 mode='text'（无需任何媒体）。
+ * 其它协议（openai / openai-video）保持不带 mode，行为不变。
+ */
+export function deepTestVars(kind, protocol) {
+  if (kind === 'text') return { user: 'ping', system: '只回复 pong', maxTokens: 8 };
+  const vars = { prompt: 'test', size: '512x512', duration: 5 };
+  if (kind === 'video' && protocol === 'agnes-video') vars.mode = 'text';
+  return vars;
+}
+
 export async function testTarget(purpose, body = {}) {
   const override = {
     model: body.model_id || undefined,
@@ -99,9 +138,7 @@ export async function testTarget(purpose, body = {}) {
       const kind = purpose === 'image_gen' ? 'image' : purpose === 'video' ? 'video' : 'text';
       const spec = builtinSpec({
         kind, protocol: t.protocol, baseURL: t.baseURL, model: t.model,
-        vars: kind === 'text'
-          ? { user: 'ping', system: '只回复 pong', maxTokens: 8 }
-          : { prompt: 'test', size: '512x512', duration: 5 },
+        vars: deepTestVars(kind, t.protocol),
       });
       const out = await execute({ spec, apiKey: t.apiKey, kind, retry429: false });
       return { ok: true, detail: kind === 'text' ? `真实调用成功，模型回复：${String(out.text).slice(0, 40)}` : `真实调用成功，产物已落盘：${out.url}` };

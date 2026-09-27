@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { useCanvas } from '../context.js';
+import ErrorSummary from '../components/ErrorSummary.jsx';
 
 const STATUS_TEXT = { running: '合成中', done: '完成', error: '失败' };
 
@@ -38,7 +39,7 @@ export default function ComposeNode({ id, data, selected }) {
             </span>}
       </div>
 
-      {data.status === 'error' && data.error && <div className="oii-err">{data.error}</div>}
+      {data.status === 'error' && <ErrorSummary error={data.error} className="oii-err" />}
 
       <div className="oii-prompt">
         <div className="oii-note">

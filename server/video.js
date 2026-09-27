@@ -1,6 +1,8 @@
 import { q, uid, now } from './db.js';
+import { modelKind } from '../shared/modelKinds.js';
 
 export { callVideo } from './ai.js';
+export { modelKind };
 
 /* ---------------- 模型访问权限缓存 ----------------
    网关在 403 时会返回 "This team can only access models=[...]"，解析后缓存，
@@ -27,12 +29,6 @@ export function setAcl(list) {
   q.run('INSERT INTO kv (key, value, update_time) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, update_time = excluded.update_time',
     'model_acl', JSON.stringify(list), now());
   return list;
-}
-
-export function modelKind(id) {
-  if (/video|wan|kling|seedance|sora|veo|minimax|hailuo|h3/i.test(id)) return 'video';
-  if (/image|dall-?e|flux|seedream|midjourney|nano.?banana|stable-?diffusion/i.test(id)) return 'image';
-  return 'text';
 }
 
 export function pickModel(kind, preferred) {

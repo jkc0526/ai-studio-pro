@@ -4,6 +4,9 @@ import { useCanvas } from '../context.js';
 import { api } from '../api.js';
 import MentionInput from '../components/MentionInput.jsx';
 import MediaPreview from '../components/MediaPreview.jsx';
+import GenerationLoading from '../components/GenerationLoading.jsx';
+import ErrorSummary from '../components/ErrorSummary.jsx';
+import { providerSupportsMedia } from '../../shared/providerCapabilities.js';
 
 const STATUS_TEXT = { running: '生成中', done: '完成', error: '失败' };
 
@@ -39,11 +42,43 @@ export default function ImageNode({ id, data, selected }) {
   const [menu, setMenu] = useState(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);   // 点击缩略图放大
+  const [providerModels, setProviderModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
   const miRef = useRef(null);                     // 富文本输入的命令式接口
 
   const ratio = data.ratio || '16:9';
   const quality = data.quality || '1K';
-  const models = ctx.imageModels || [];
+  const defaultProvider = ctx.imageDefaultProvider || null;
+  const providerId = data.providerId && data.providerId !== defaultProvider?.id ? data.providerId : '';
+  const imageProtocols = ['openai', 'agnes-video'];
+  const availableProviders = (ctx.imageProviders || []).filter((p) => p.enabled && p.has_key && p.base_url
+    && imageProtocols.includes(p.protocol) && providerSupportsMedia(p, 'image') && p.id !== defaultProvider?.id);
+  const selectedProvider = availableProviders.find((p) => p.id === providerId);
+  const models = providerId ? providerModels : (ctx.imageModels || []);
+  const modelIdOf = (model) => typeof model === 'string' ? model : (model?.id || model?.name || '');
+
+  useEffect(() => {
+    if (!providerId) {
+      setProviderModels([]);
+      setModelsLoading(false);
+      setModelsError('');
+      return undefined;
+    }
+    let active = true;
+    setProviderModels([]);
+    setModelsLoading(true);
+    setModelsError('');
+    api.listModels(`purpose=image_gen&providerId=${encodeURIComponent(providerId)}`)
+      .then((result) => {
+        if (!active) return;
+        setProviderModels((result.groups?.image || []).filter(Boolean));
+        setModelsError(result.error || '');
+      })
+      .catch((error) => { if (active) setModelsError(error.message || '模型列表获取失败'); })
+      .finally(() => { if (active) setModelsLoading(false); });
+    return () => { active = false; };
+  }, [providerId, selectedProvider?.base_url, selectedProvider?.update_time]);
 
   /* 订阅 React Flow 的图结构：连线/上游节点产物变化时本节点会重渲染 */
   const graphNodes = useStore((s) => s.nodes);
@@ -77,6 +112,10 @@ export default function ImageNode({ id, data, selected }) {
   };
 
   const gen = () => {
+    if (providerId && !models.some((model) => modelIdOf(model) === data.modelId)) {
+      ctx.updateNode(id, { status: 'error', error: '请先从所选供应商的模型列表中选择一个图像模型' });
+      return;
+    }
     // 把比例/画质合成为后端认识的 size
     ctx.updateNode(id, { size: sizeOf(ratio, quality) });
     ctx.runNode(id);
@@ -119,29 +158,40 @@ export default function ImageNode({ id, data, selected }) {
         {data.status && <span className={`oii-badge ${data.status}`}>{STATUS_TEXT[data.status] || data.status}</span>}
       </div>
 
-      <div className={`oii-card ${data.imageUrl ? 'has-media' : ''}`}>
+      <div className={`oii-card ${data.imageUrl ? 'has-media' : ''}`} aria-busy={data.status === 'running'}>
         {data.imageUrl
-          ? <img src={data.imageUrl} alt="生成结果" className="nodrag" />
-          : <span className="oii-ph">
+          ? <img
+              src={data.imageUrl}
+              alt="生成结果"
+              className="oii-result-image"
+              draggable={false}
+              title="双击放大预览"
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                setPreview({ type: 'image', url: data.imageUrl, key: data.label || '图片预览' });
+              }}
+            />
+          : data.status !== 'running' ? <span className="oii-ph">
               <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.4">
                 <path d="M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5" />
               </svg>
-            </span>}
+            </span> : null}
         <label className="oii-upload nodrag" title={data.imageUrl ? '替换图片' : '上传图片'}>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
             <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
           </svg>
           <input type="file" accept="image/*" hidden onChange={(e) => pickFile(e.target.files?.[0])} />
         </label>
+        {data.status === 'running' && <GenerationLoading media="图片" />}
         {/* 连接桩挂在卡片边缘的垂直中点（放在 .oii-card 内定位，否则会悬在节点外框上） */}
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
       </div>
 
-      {data.status === 'error' && data.error && <div className="oii-err">{data.error}</div>}
+      {data.status === 'error' && <ErrorSummary error={data.error} className="oii-err" />}
 
       {/* 下方大输入框 */}
-      <div className="oii-prompt">
+      {!data.sourceUrl && <div className="oii-prompt">
         {/* 参考素材（连线传进来的图/视频）—— 点缩略图即插入 @ 引用 */}
         {refs.length > 0 && (
           <div className="oii-refs nodrag">
@@ -173,10 +223,21 @@ export default function ImageNode({ id, data, selected }) {
         />
 
         <div className="oii-params">
-          <select className="nodrag" value={data.modelId || ''} title="图像模型"
-            onChange={(e) => ctx.updateNode(id, { modelId: e.target.value })}>
-            <option value="">默认模型</option>
-            {models.map((m) => <option key={m.id || m} value={m.id || m}>{m.label || m.id || m}</option>)}
+          <select className="nodrag oii-image-provider-select" value={providerId} title="图像供应商" aria-label="图像供应商"
+            onChange={(e) => ctx.updateNode(id, { providerId: e.target.value || undefined, modelId: undefined, status: 'draft', error: undefined })}>
+            <option value="">{defaultProvider?.name ? `默认 · ${defaultProvider.name}` : '默认供应商'}</option>
+            {providerId && !selectedProvider && <option value={providerId} disabled>所选供应商不可用</option>}
+            {availableProviders.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          <select className="nodrag oii-image-model-select" value={data.modelId || ''} title={modelsError || '图像模型'} aria-label="图像模型"
+            disabled={!!providerId && (modelsLoading || !models.length)}
+            onChange={(e) => ctx.updateNode(id, { modelId: e.target.value || undefined })}>
+            <option value="">{modelsLoading ? '加载模型中…' : models.length ? '默认模型' : providerId ? '未获取到模型' : '默认模型'}</option>
+            {models.map((model) => {
+              const modelId = modelIdOf(model);
+              return modelId ? <option key={modelId} value={modelId}>{model.label || modelId}</option> : null;
+            })}
           </select>
 
           <div className="oii-ratio">
@@ -195,13 +256,14 @@ export default function ImageNode({ id, data, selected }) {
 
           <button className="nodrag oii-mini" title="片段库" onClick={() => ctx.openSnippets?.(id)}>片段</button>
           <button className="nodrag oii-mini" title="1x">1x</button>
-          <button className="nodrag oii-send" disabled={busy || data.status === 'running'} onClick={gen}>
+          <button className="nodrag oii-send" disabled={busy || data.status === 'running' || modelsLoading || (!!providerId && !data.modelId)} onClick={gen}
+            title={modelsError || (providerId && !models.length && !modelsLoading ? '供应商没有返回可识别的图像模型' : '生成图片')}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 19V5M6 11l6-6 6 6" />
             </svg>
           </button>
         </div>
-      </div>
+      </div>}
 
       <MediaPreview item={preview} onClose={() => setPreview(null)} />
     </div>

@@ -12,6 +12,8 @@ const I = {
   compose: 'M4 6h16M4 12h10M4 18h16M18 10l3 2-3 2',
   director: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5',
   upload: 'M12 16V4M7 9l5-5 5 5M5 20h14',
+  asset: 'M4 5h16v14H4zM7 9h4M7 13h10M7 17h7',
+  history: 'M12 8v4l3 2M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3 4v4h4',
 };
 
 function Icon({ d }) {
@@ -23,34 +25,37 @@ function Icon({ d }) {
   );
 }
 
-/* 双击空白处弹出的节点菜单（对齐 OiiOii：基础 / 工具 / 批量上传） */
+/* 画布节点菜单：保持少量高频入口，资源动作与项目工作区互通。 */
 export const NODE_MENU = [
   {
-    key: 'basic',
-    label: '基础',
+    key: 'generate',
+    label: '生成',
     items: [
-      { type: 'noteNode', label: '便签', icon: I.note },
-      { type: 'textNode', label: '文本', icon: I.text },
       { type: 'imageNode', label: '图片', icon: I.image },
       { type: 'videoNode', label: '视频', desc: '首帧图或文本描述生成视频', icon: I.video },
+      { type: 'gridNode', label: '九宫格', desc: '一次生成多张构图备选', icon: I.grid },
       { type: 'audioNode', label: '音频', badge: 'BETA', icon: I.audio },
     ],
   },
   {
-    key: 'tools',
-    label: '工具',
+    key: 'workflow',
+    label: '工作流',
     items: [
+      { type: 'textNode', label: '文本', icon: I.text },
+      { type: 'noteNode', label: '便签', icon: I.note },
       { type: 'scriptNode', label: '分镜脚本', icon: I.script },
-      { type: 'gridNode', label: '分镜格子', icon: I.grid },
       { type: 'composeNode', label: '视频合成', icon: I.compose },
       { type: 'directorNode', label: '3D导演台', icon: I.director },
     ],
   },
   {
-    key: 'batch',
-    label: '',
+    key: 'resources',
+    label: '资源',
     items: [
+      { type: 'uploadNode', label: '上传资源', desc: '导入图片或视频文件', icon: I.upload },
       { type: 'batchUploadNode', label: '批量上传', desc: '批量导入图片或其他文件', icon: I.upload },
+      { action: 'assets', label: '项目资产', desc: '打开当前项目的角色和风格', icon: I.asset },
+      { action: 'history', label: '生成历史', desc: '查看项目成片与视频', icon: I.history },
     ],
   },
 ];
@@ -83,18 +88,16 @@ export default function NodePalette({ open, onPick, onClose }) {
   return (
     <div className="palette-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
-        {searching && (
-          <div className="palette-search">
-            <input autoFocus placeholder="搜索节点…" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-        )}
+        <div className="palette-search">
+          <input autoFocus placeholder="搜索生成、工作流或资源…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
 
         <div className="palette-body">
           {searching ? (
             <div className="palette-cat">
               {hits.length === 0 && <div className="palette-empty">无匹配节点</div>}
               {hits.map((it) => (
-                <MenuRow key={it.type} item={it} onPick={onPick} />
+                <MenuRow key={it.action || it.type} item={it} onPick={onPick} />
               ))}
             </div>
           ) : (
@@ -102,22 +105,13 @@ export default function NodePalette({ open, onPick, onClose }) {
               <div key={cat.key} className={`palette-cat ${ci > 0 ? 'palette-cat-gap' : ''}`}>
                 {cat.label && <div className="palette-cat-head"><span>{cat.label}</span></div>}
                 {cat.items.map((it) => (
-                  <MenuRow key={it.type} item={it} onPick={onPick} />
+                  <MenuRow key={it.action || it.type} item={it} onPick={onPick} />
                 ))}
               </div>
             ))
           )}
         </div>
 
-        {/* 底部搜索入口（点击展开搜索框） */}
-        {!searching && (
-          <button className="palette-search-hint" onClick={() => setQ(' ')}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <circle cx="11" cy="11" r="7" /><path d="M16.5 16.5 21 21" />
-            </svg>
-            搜索节点
-          </button>
-        )}
       </div>
     </div>
   );
@@ -125,7 +119,7 @@ export default function NodePalette({ open, onPick, onClose }) {
 
 function MenuRow({ item, onPick }) {
   return (
-    <button className="palette-item" onClick={() => onPick(item.type)}>
+    <button className="palette-item" onClick={() => onPick(item.action ? { action: item.action } : item.type)}>
       <span className="palette-icon"><Icon d={item.icon} /></span>
       <span className="palette-meta">
         <span className="palette-title">

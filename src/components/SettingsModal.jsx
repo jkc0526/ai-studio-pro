@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 
 const PURPOSES = [
-  { key: 'thinking', title: '文本模型', desc: '拆分镜 / 角色提取 / 大模型节点' },
-  { key: 'image_gen', title: '图像模型', desc: '分镜图 / 角色三视图' },
+  { key: 'thinking', title: '文本模型', desc: '剧本 / 分镜拆解 / AI 助手' },
+  { key: 'image_gen', title: '图片模型', desc: '分镜图 / 角色与场景素材' },
   { key: 'video', title: '视频模型', desc: '图生视频 / 批量视频' },
 ];
-const STEPS = { source: '用途', provider: '供应商', custom: '自定义接口' };
+const MODEL_CATEGORIES = [
+  ...PURPOSES.map(({ key, title }) => ({ key, title })),
+  { key: 'audio', title: '音频模型', disabled: true },
+];
 const BLANK_API = {
   name: '', kind: 'image', method: 'POST', url_template: '{{base_url}}/images/generations',
   headers_json: '{}',
@@ -17,8 +20,16 @@ const BLANK_API = {
   poll_result_path: '', notes: '',
 };
 
+function ModelKindIcon({ kind }) {
+  const shared = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true };
+  if (kind === 'image_gen') return <svg {...shared}><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><circle cx="9" cy="9" r="1.5" /><path d="m4.5 17 5-5 3.2 3.2 2.3-2.2 4.5 4.5" /></svg>;
+  if (kind === 'video') return <svg {...shared}><rect x="3.5" y="5" width="17" height="14" rx="2.5" /><path d="m10 9 5 3-5 3z" /></svg>;
+  return <svg {...shared}><path d="M5 6h14M5 12h14M5 18h9" /></svg>;
+}
+
 export default function SettingsModal({ open, onClose, notify }) {
   const [tab, setTab] = useState('source');
+  const [purposeTab, setPurposeTab] = useState('thinking');
   const [configs, setConfigs] = useState({});
   const [providers, setProviders] = useState([]);
   const [customs, setCustoms] = useState([]);
@@ -29,6 +40,11 @@ export default function SettingsModal({ open, onClose, notify }) {
   const [editingApi, setEditingApi] = useState(null);
   const [apiTry, setApiTry] = useState(null);
   const [modelList, setModelList] = useState(null);
+  const [visibleKeys, setVisibleKeys] = useState({});
+  const [visibleProviderKey, setVisibleProviderKey] = useState(false);
+  const configFileRef = useRef(null);
+  const [appVersion, setAppVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState({ state: 'idle' });
 
   const load = useCallback(async () => {
     const [cfg, pv, ca, pr] = await Promise.all([
@@ -52,13 +68,48 @@ export default function SettingsModal({ open, onClose, notify }) {
 
   useEffect(() => {
     if (!open) return;
+    setVisibleKeys({}); setVisibleProviderKey(false);
     setTestResult({}); setModelList(null);
     load().catch((e) => notify(e.message, true));
   }, [open, load, notify]);
 
+  useEffect(() => {
+    if (!open || !window.weaveUpdates) return undefined;
+    let active = true;
+    const unsubscribe = window.weaveUpdates.onStatus((status) => {
+      if (active) setUpdateStatus(status);
+    });
+    Promise.all([window.weaveUpdates.getVersion(), window.weaveUpdates.getStatus()])
+      .then(([version, status]) => {
+        if (!active) return;
+        setAppVersion(version);
+        setUpdateStatus(status || { state: 'idle' });
+      })
+      .catch(() => {});
+    return () => { active = false; unsubscribe?.(); };
+  }, [open]);
+
   if (!open) return null;
 
   const patch = (purpose, p) => setConfigs((f) => ({ ...f, [purpose]: { ...(f[purpose] || {}), ...p } }));
+
+  const updateAction = async () => {
+    if (!window.weaveUpdates) {
+      setUpdateStatus({ state: 'unavailable', message: '请在已安装的 Windows 桌面版中使用更新' });
+      return;
+    }
+    try {
+      if (updateStatus.state === 'downloaded') await window.weaveUpdates.install();
+      else await window.weaveUpdates.check();
+    } catch (error) {
+      setUpdateStatus({ state: 'error', message: error.message || '更新操作失败' });
+    }
+  };
+
+  const updateButtonText = ({
+    idle: '检查更新', checking: '正在检查…', downloading: `正在下载${Number.isFinite(updateStatus.percent) ? ` ${updateStatus.percent}%` : '…'}`,
+    downloaded: '重启并安装', 'up-to-date': '已是最新版本', unavailable: '仅桌面版支持', error: '重试检查',
+  }[updateStatus.state] || '检查更新');
 
   const saveAll = async () => {
     setBusy('save');
@@ -97,6 +148,7 @@ export default function SettingsModal({ open, onClose, notify }) {
   const loadModels = async (purpose) => {
     const f = configs[purpose];
     setBusy(`models:${purpose}`);
+    setModelList(null);
     try {
       const qs = new URLSearchParams({ purpose });
       if (f.provider_id && !f.custom_api_id) qs.set('providerId', f.provider_id);
@@ -126,6 +178,85 @@ export default function SettingsModal({ open, onClose, notify }) {
     await api.deleteProvider(p.id);
     await load();
     notify('供应商已删除');
+  };
+
+  const importConfiguration = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setBusy('import');
+    try {
+      const raw = JSON.parse(await file.text());
+      const safeModel = (model) => {
+        if (typeof model === 'string') return model;
+        if (!model || typeof model !== 'object') return null;
+        const fields = ['id', 'name', 'model', 'capability', 'kind', 'type', 'description', 'desc', 'durationRange', 'price'];
+        const safe = Object.fromEntries(fields.filter((key) => model[key] !== undefined).map((key) => [key, model[key]]));
+        if (safe.durationRange && typeof safe.durationRange === 'object') {
+          const durationFields = ['min', 'max', 'default', 'minSeconds', 'maxSeconds', 'seconds', 'step'];
+          safe.durationRange = Object.fromEntries(durationFields.filter((key) => safe.durationRange[key] !== undefined).map((key) => [key, safe.durationRange[key]]));
+        }
+        if (safe.price !== undefined && !['string', 'number'].includes(typeof safe.price)) delete safe.price;
+        return safe;
+      };
+      const safeBaseUrl = (value) => {
+        if (typeof value !== 'string' || !value.trim()) return value;
+        const parsed = new URL(value);
+        if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Base URL 必须是无账号密码的 HTTP(S) 地址');
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/$/, '');
+      };
+      let safeConfig;
+      if (raw?.app === 'infinite-canvas' && raw.config && typeof raw.config === 'object') {
+        const configFields = ['baseUrl', 'apiFormat', 'models', 'imageModel', 'videoModel', 'model'];
+        const channelFields = ['id', 'name', 'baseUrl', 'base_url', 'apiFormat', 'protocol', 'enabled', 'models'];
+        safeConfig = {
+          app: raw.app, version: raw.version,
+          config: Object.fromEntries(configFields.filter((key) => raw.config[key] !== undefined).map((key) => [key, key === 'baseUrl' ? safeBaseUrl(raw.config[key]) : key === 'models' && Array.isArray(raw.config[key]) ? raw.config[key].map(safeModel).filter(Boolean) : raw.config[key]])),
+        };
+        if (Array.isArray(raw.config.channels)) safeConfig.config.channels = raw.config.channels.map((channel) => Object.fromEntries(
+          channelFields.filter((key) => channel?.[key] !== undefined).map((key) => [key, ['baseUrl', 'base_url'].includes(key) ? safeBaseUrl(channel[key]) : key === 'models' && Array.isArray(channel[key]) ? channel[key].map(safeModel).filter(Boolean) : channel[key]]),
+        ));
+      } else if (raw?.app === 'weave-canvas' && raw.schemaVersion === 1) {
+        safeConfig = {
+          app: 'weave-canvas', schemaVersion: 1,
+          providers: (Array.isArray(raw.providers) ? raw.providers : []).map((provider) => ({
+            id: provider?.id, name: provider?.name, protocol: provider?.protocol, base_url: safeBaseUrl(provider?.base_url),
+            models: Array.isArray(provider?.models) ? provider.models.map(safeModel).filter(Boolean) : [],
+            enabled: provider?.enabled,
+          })),
+          aiConfigs: (Array.isArray(raw.aiConfigs) ? raw.aiConfigs : []).map((config) => ({
+            purpose: config?.purpose, provider: config?.provider, provider_name: config?.provider_name,
+            base_url: safeBaseUrl(config?.base_url), model_id: config?.model_id, provider_id: config?.provider_id,
+            custom_api_id: config?.custom_api_id, notes: config?.notes,
+          })),
+        };
+      } else throw new Error('不支持的配置文件格式');
+      const result = await api.importConfiguration(safeConfig);
+      await load();
+      const providerCount = result.imported?.length || 0;
+      const modelCount = result.imported?.reduce((sum, provider) => sum + (provider.models || 0), 0) || 0;
+      notify(`导入完成：${providerCount} 个渠道、${modelCount} 个模型。API Key 未导入，请在渠道设置中填写。`);
+    } catch (e) {
+      notify(`导入失败：${e.message}`, true);
+    } finally { setBusy(''); }
+  };
+
+  const exportConfiguration = async () => {
+    setBusy('export');
+    try {
+      const config = await api.exportConfiguration();
+      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `weave-canvas-config-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      notify('配置已导出（不含 API Key 和自定义接口模板）');
+    } catch (e) { notify(`导出失败：${e.message}`, true); }
+    finally { setBusy(''); }
   };
 
   const saveApi = async () => {
@@ -161,41 +292,90 @@ export default function SettingsModal({ open, onClose, notify }) {
     <div className="modal-mask" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <span>模型与接口设置</span>
-          <button className="ghost" onClick={onClose}>×</button>
+          <span>模型中心</span>
+          <button className="ghost" aria-label="关闭设置" onClick={onClose}>×</button>
+        </div>
+
+        <div className="config-card" style={{ margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="model-card-icon">W</div>
+          <div className="model-card-heading">
+            <b>WeaveCanvas 桌面版</b>
+            <span className="hint">
+              {appVersion ? `当前版本 v${appVersion}` : '桌面应用更新'}
+              {updateStatus.state === 'error' && updateStatus.message ? ` · ${updateStatus.message}` : ''}
+              {updateStatus.state === 'unavailable' && updateStatus.message ? ` · ${updateStatus.message}` : ''}
+            </span>
+          </div>
+          <span className="spacer" />
+          <button className={updateStatus.state === 'downloaded' ? 'primary' : ''}
+            onClick={updateAction}
+            disabled={['checking', 'downloading', 'unavailable'].includes(updateStatus.state)}>
+            {updateButtonText}
+          </button>
         </div>
 
         <div className="modal-body scroll">
-          <div className="tabs">
-            {Object.entries(STEPS).map(([k, label]) => (
-              <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>{label}</button>
-            ))}
-            <span className="hint" style={{ marginLeft: 'auto', alignSelf: 'center' }}>
-              优先级：自定义接口 &gt; 供应商 &gt; 直填地址
-            </span>
+          <div className="model-center-nav">
+            <input ref={configFileRef} className="config-import-input" type="file" accept=".json,application/json" onChange={importConfiguration} />
+            <div className="model-center-mode" role="tablist" aria-label="模型配置方式">
+              <button role="tab" aria-selected={tab === 'source'} aria-pressed={tab === 'source'} className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>精选</button>
+              <button role="tab" aria-selected={tab === 'provider'} aria-pressed={tab === 'provider'} className={tab === 'provider' ? 'active' : ''} onClick={() => setTab('provider')}>自定义</button>
+            </div>
+            <button className={`model-center-custom-link ${tab === 'custom' ? 'active' : ''}`} onClick={() => setTab('custom')}>自定义接口</button>
+            <div className="config-transfer-actions">
+              <button onClick={() => configFileRef.current?.click()} disabled={!!busy}>导入配置</button>
+              <button onClick={exportConfiguration} disabled={!!busy}>{busy === 'export' ? '导出中…' : '导出配置'}</button>
+            </div>
           </div>
 
-          {tab === 'source' && PURPOSES.map((p) => {
+          {tab === 'source' && (
+            <>
+              <div className="model-purpose-tabs" role="tablist" aria-label="模型类型">
+                {MODEL_CATEGORIES.map((category) => (
+                  <button key={category.key} role="tab" aria-selected={purposeTab === category.key}
+                    aria-pressed={purposeTab === category.key} disabled={category.disabled}
+                    title={category.disabled ? '音频模型接入暂未开放' : undefined}
+                    className={purposeTab === category.key ? 'active' : ''}
+                    onClick={() => { setPurposeTab(category.key); setModelList(null); }}>
+                    {category.title}
+                    {category.disabled && <span className="model-coming-soon">即将支持</span>}
+                  </button>
+                ))}
+              </div>
+
+              <div className="model-center-banner">
+                <div className="model-banner-copy">
+                  <b>快速接入 · 主流模型服务</b>
+                  <p>连接厂商 API 或自建兼容网关。配置 Base URL 和 API Key 后，可在下方拉取模型、测试连通性。</p>
+                </div>
+                <button className="model-banner-action" onClick={() => setTab('provider')}>+ 添加供应商</button>
+              </div>
+            </>
+          )}
+
+          {tab === 'source' && PURPOSES.filter((p) => p.key === purposeTab).map((p) => {
             const f = configs[p.key] || {};
             const tr = testResult[p.key];
             return (
-              <div className="config-card" key={p.key}>
+              <div className="config-card model-purpose-card" key={p.key}>
                 <div className="config-head">
-                  <b>{p.title}</b>
-                  <span className="hint">{p.desc}</span>
+                  <div className="model-card-icon"><ModelKindIcon kind={p.key} /></div>
+                  <div className="model-card-heading"><b>{p.title}</b><span className="hint">{p.desc}</span></div>
                   <span className="spacer" />
                   <span className={`keytag ${f.has_key || f.provider_id ? 'ok' : ''}`}>
-                    来源：{f.custom_api_name || f.provider_name || '直填地址'}
+                    {f.custom_api_name || f.provider_name || (f.has_key ? '已配置' : '待配置')}
                   </span>
                 </div>
 
                 <div className="row3">
                   <div className="field">
-                    <label className="field-label">来源</label>
+                    <label className="field-label" htmlFor={`source-${p.key}`}>来源</label>
                     <select
+                      id={`source-${p.key}`}
                       value={f.custom_api_id ? `ca:${f.custom_api_id}` : f.provider_id ? `pv:${f.provider_id}` : ''}
                       onChange={(e) => {
                         const v = e.target.value;
+                        setModelList(null);
                         if (v.startsWith('ca:')) patch(p.key, { custom_api_id: v.slice(3), provider_id: '' });
                         else if (v.startsWith('pv:')) {
                           const pv = providers.find((x) => x.id === v.slice(3));
@@ -213,8 +393,8 @@ export default function SettingsModal({ open, onClose, notify }) {
                     </select>
                   </div>
                   <div className="field">
-                    <label className="field-label">模型名</label>
-                    <input value={f.model_id || ''}
+                    <label className="field-label" htmlFor={`model-id-${p.key}`}>模型名</label>
+                    <input id={`model-id-${p.key}`} value={f.model_id || ''}
                       placeholder={p.key === 'thinking' ? 'gpt-4o-mini' : p.key === 'image_gen' ? 'gpt-image-1' : 'sora-2'}
                       onChange={(e) => patch(p.key, { model_id: e.target.value })} />
                   </div>
@@ -230,23 +410,28 @@ export default function SettingsModal({ open, onClose, notify }) {
                 {!f.custom_api_id && (
                   <div className="row3">
                     <div className="field">
-                      <label className="field-label">Base URL</label>
-                      <input value={f.base_url || ''} placeholder="https://api.example.com/v1"
+                      <label className="field-label" htmlFor={`base-url-${p.key}`}>Base URL</label>
+                      <input id={`base-url-${p.key}`} value={f.base_url || ''} placeholder="https://api.example.com/v1"
                         onChange={(e) => patch(p.key, { base_url: e.target.value })} />
                     </div>
                     <div className="field">
-                      <label className="field-label">
-                        API Key
+                      <div className="model-key-label-row">
+                        <label className="field-label" htmlFor={`api-key-${p.key}`}>API Key</label>
                         {f.has_key && <span className="keytag ok" style={{ marginLeft: 6 }}>已保存 {f.key_hint}</span>}
                         {f.has_key && !f.clear && (
                           <button className="ghost tiny" style={{ marginLeft: 6 }}
                             onClick={() => patch(p.key, { clear: true, api_key: '', has_key: false })}>清除</button>
                         )}
                         {f.clear && <button className="ghost tiny" style={{ marginLeft: 6 }} onClick={() => patch(p.key, { clear: false })}>取消清除</button>}
-                      </label>
-                      <input type="text" autoComplete="off" spellCheck={false} value={f.api_key || ''} disabled={f.clear}
-                        placeholder={f.has_key ? '留空 = 不修改，粘贴新 Key 则覆盖' : '粘贴 API Key'}
-                        onChange={(e) => patch(p.key, { api_key: e.target.value })} />
+                      </div>
+                      <div className="model-secret-field">
+                        <input id={`api-key-${p.key}`} type={visibleKeys[p.key] ? 'text' : 'password'} autoComplete="new-password" spellCheck={false}
+                          value={f.api_key || ''} disabled={f.clear} aria-label={`${p.title} API Key`}
+                          placeholder={f.has_key ? '留空 = 不修改，粘贴新 Key 则覆盖' : '粘贴 API Key'}
+                          onChange={(e) => patch(p.key, { api_key: e.target.value })} />
+                        <button type="button" className="model-secret-toggle" aria-label={visibleKeys[p.key] ? '隐藏 API Key' : '显示 API Key'}
+                          onClick={() => setVisibleKeys((v) => ({ ...v, [p.key]: !v[p.key] }))}>{visibleKeys[p.key] ? '隐藏' : '显示'}</button>
+                      </div>
                     </div>
                     <div className="field">
                       <label className="field-label">来源说明</label>
@@ -285,6 +470,7 @@ export default function SettingsModal({ open, onClose, notify }) {
                         const mark = pr ? (pr.state === 'ok' ? '✓' : pr.state === 'limited' ? '⏳' : '✕') : '';
                         return (
                           <button key={m} className={`chip ${f.model_id === m ? 'on' : ''}`} title={pr?.detail || ''}
+                            aria-pressed={f.model_id === m}
                             onClick={() => patch(p.key, { model_id: m })}>
                             {mark && <b style={{ color: pr.state === 'ok' ? 'var(--ok)' : pr.state === 'limited' ? 'var(--warn)' : 'var(--err)' }}>{mark} </b>}
                             {m}
@@ -304,8 +490,8 @@ export default function SettingsModal({ open, onClose, notify }) {
           {tab === 'provider' && (
             <>
               <div className="snippet-actions">
-                <button className="primary" onClick={() => setEditing({ name: '', protocol: 'openai', base_url: '', api_key: '', notes: '' })}>+ 新建供应商</button>
-                <span className="hint">已内置常见网关，选中后只需填 Key</span>
+                <button className="primary" onClick={() => { setVisibleProviderKey(false); setEditing({ name: '', protocol: 'openai', base_url: '', api_key: '', notes: '' }); }}>+ 新建供应商</button>
+                <span className="hint">管理主流厂商、自建网关或 OpenAI 兼容服务；模型中心可自动拉取模型。</span>
               </div>
 
               <div className="pv-grid">
@@ -320,7 +506,7 @@ export default function SettingsModal({ open, onClose, notify }) {
                     <div className="pv-foot">
                       <span className={`keytag ${p.has_key ? 'ok' : ''}`}>{p.has_key ? `已存 ${p.key_hint}` : '未填 Key'}</span>
                       <span className="spacer" />
-                      <button className="tiny" onClick={() => setEditing({ ...p, api_key: '', clear: false })}>编辑</button>
+                      <button className="tiny" onClick={() => { setVisibleProviderKey(false); setEditing({ ...p, api_key: '', clear: false }); }}>编辑</button>
                       <button className="ghost tiny" onClick={() => removeProvider(p)}>删除</button>
                     </div>
                   </div>
@@ -331,24 +517,30 @@ export default function SettingsModal({ open, onClose, notify }) {
                 <div className="config-card">
                   <div className="config-head"><b>{editing.id ? '编辑供应商' : '新建供应商'}</b></div>
                   <div className="row3">
-                    <div className="field"><label className="field-label">名称</label>
-                      <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
-                    <div className="field"><label className="field-label">协议</label>
-                      <select value={editing.protocol} onChange={(e) => setEditing({ ...editing, protocol: e.target.value })}>
+                    <div className="field"><label className="field-label" htmlFor="provider-name">名称</label>
+                      <input id="provider-name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></div>
+                    <div className="field"><label className="field-label" htmlFor="provider-protocol">协议</label>
+                      <select id="provider-protocol" value={editing.protocol} onChange={(e) => setEditing({ ...editing, protocol: e.target.value })}>
                         {protocols.map((pr) => <option key={pr.key} value={pr.key}>{pr.name}</option>)}
                       </select></div>
-                    <div className="field"><label className="field-label">Base URL</label>
-                      <input value={editing.base_url} onChange={(e) => setEditing({ ...editing, base_url: e.target.value })} /></div>
+                    <div className="field"><label className="field-label" htmlFor="provider-base-url">Base URL</label>
+                      <input id="provider-base-url" value={editing.base_url} onChange={(e) => setEditing({ ...editing, base_url: e.target.value })} /></div>
                   </div>
                   <div className="row3">
                     <div className="field">
-                      <label className="field-label">API Key {editing.has_key && <span className="keytag ok" style={{ marginLeft: 6 }}>已存 {editing.key_hint}</span>}</label>
-                      <input value={editing.api_key || ''} placeholder={editing.has_key ? '留空 = 不修改' : '粘贴 Key'}
-                        onChange={(e) => setEditing({ ...editing, api_key: e.target.value })} />
+                      <label className="field-label" htmlFor="provider-api-key">API Key {editing.has_key && <span className="keytag ok" style={{ marginLeft: 6 }}>已存 {editing.key_hint}</span>}</label>
+                      <div className="model-secret-field">
+                        <input id="provider-api-key" type={visibleProviderKey ? 'text' : 'password'} autoComplete="new-password"
+                          value={editing.api_key || ''} aria-label="供应商 API Key"
+                          placeholder={editing.has_key ? '留空 = 不修改' : '粘贴 Key'}
+                          onChange={(e) => setEditing({ ...editing, api_key: e.target.value })} />
+                        <button type="button" className="model-secret-toggle" aria-label={visibleProviderKey ? '隐藏供应商 API Key' : '显示供应商 API Key'}
+                          onClick={() => setVisibleProviderKey((v) => !v)}>{visibleProviderKey ? '隐藏' : '显示'}</button>
+                      </div>
                     </div>
                     <div className="field" style={{ gridColumn: 'span 2' }}>
-                      <label className="field-label">备注</label>
-                      <input value={editing.notes || ''} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
+                      <label className="field-label" htmlFor="provider-notes">备注</label>
+                      <input id="provider-notes" value={editing.notes || ''} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
                     </div>
                   </div>
                   <div className="snippet-actions">

@@ -11,6 +11,8 @@ const { callLLM } = ai;
 import * as endpointMod from './endpoint.js';
 import * as agentsMod from './agents.js';
 import * as skillsMod from './skills.js';
+import { formatVideoModelPrice, readVideoDurationCapability } from '../shared/videoCapabilities.js';
+import { normalizeConfigImport } from './configTransfer.js';
 
 const PORT = Number(process.env.PORT || 8787);
 const app = express();
@@ -160,6 +162,99 @@ app.delete('/api/providers/:id', wrap((req, res) => {
   q.run('UPDATE ai_config SET provider_id = NULL WHERE provider_id = ?', req.params.id);
   q.run('DELETE FROM provider WHERE id = ?', req.params.id);
   ok(res, { deleted: req.params.id });
+}));
+
+/* ---------------- 配置导入 / 导出（凭据一律不离开本机） ---------------- */
+const portableModels = (raw) => {
+  let models = [];
+  try { models = JSON.parse(raw || '[]'); } catch { return []; }
+  if (!Array.isArray(models)) return [];
+  return models.slice(0, 1000).map((entry) => {
+    const row = typeof entry === 'string' ? { id: entry } : (entry || {});
+    const id = String(row.id || row.name || row.model || '').trim().replace(/^default::/i, '');
+    if (!id) return null;
+    const durationRange = row.durationRange && typeof row.durationRange === 'object'
+      ? Object.fromEntries(['min', 'max', 'default', 'minSeconds', 'maxSeconds', 'seconds', 'step']
+        .filter((key) => Number.isFinite(Number(row.durationRange[key])))
+        .map((key) => [key, Number(row.durationRange[key])]))
+      : null;
+    return {
+      id, name: id,
+      ...(row.capability || row.kind || row.type ? { capability: String(row.capability || row.kind || row.type).slice(0, 40) } : {}),
+      ...(row.description || row.desc ? { description: String(row.description || row.desc).slice(0, 2000) } : {}),
+      ...(durationRange && Object.keys(durationRange).length ? { durationRange } : {}),
+      ...(row.price !== undefined && (typeof row.price === 'number' || typeof row.price === 'string') ? { price: row.price } : {}),
+    };
+  }).filter(Boolean);
+};
+const portableBaseUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    url.username = ''; url.password = ''; url.search = ''; url.hash = '';
+    return url.toString().replace(/\/$/, '');
+  } catch { return ''; }
+};
+
+app.get('/api/config/export', wrap((req, res) => {
+  const providers = q.all('SELECT id, name, protocol, base_url, models_json, notes, enabled FROM provider ORDER BY create_time')
+    .map((row) => ({
+      id: row.id, name: row.name, protocol: row.protocol, base_url: portableBaseUrl(row.base_url),
+      models: portableModels(row.models_json), enabled: row.enabled,
+    }));
+  const aiConfigs = q.all('SELECT purpose, provider, base_url, model_id, provider_id, custom_api_id, notes FROM ai_config')
+    .map(({ notes, ...row }) => ({ ...row, base_url: portableBaseUrl(row.base_url), provider_name: row.provider_id ? q.one('SELECT name FROM provider WHERE id = ?', row.provider_id)?.name || null : null }));
+  ok(res, { app: 'weave-canvas', schemaVersion: 1, exportedAt: now(), providers, aiConfigs });
+}));
+
+app.post('/api/config/import', wrap((req, res) => {
+  const normalized = normalizeConfigImport(req.body);
+  const providerIdMap = new Map();
+  const imported = [];
+  db.exec('BEGIN');
+  try {
+    for (const provider of normalized.providers) {
+      const existing = q.one('SELECT id FROM provider WHERE name = ? AND base_url = ?', provider.name, provider.base_url);
+      const id = existing?.id || uid('pv');
+      const modelsJson = JSON.stringify(provider.models || []);
+      if (existing) {
+        q.run('UPDATE provider SET protocol = ?, models_json = ?, notes = ?, enabled = ?, update_time = ? WHERE id = ?',
+          provider.protocol, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), id);
+      } else {
+        q.run('INSERT INTO provider (id, name, protocol, base_url, api_key, models_json, notes, enabled, create_time, update_time) VALUES (?,?,?,?,\'\',?,?,?,?,?)',
+          id, provider.name, provider.protocol, provider.base_url, modelsJson, provider.notes || '', provider.enabled === 0 ? 0 : 1, now(), now());
+      }
+      if (provider.source_id) providerIdMap.set(provider.source_id, id);
+      imported.push({ id, name: provider.name, models: provider.models?.length || 0 });
+    }
+
+    const importedModelProvider = (modelId) => normalized.providers.find((provider) =>
+      provider.models?.some((model) => model.id === modelId));
+    const configurePurpose = (purpose, provider, modelId) => {
+      if (!provider || !modelId) return;
+      const id = providerIdMap.get(provider.source_id) || q.one('SELECT id FROM provider WHERE name = ? AND base_url = ?', provider.name, provider.base_url)?.id;
+      if (!id) return;
+      q.run('UPDATE ai_config SET provider = ?, base_url = ?, model_id = ?, provider_id = ?, custom_api_id = NULL, update_time = ? WHERE purpose = ?',
+        provider.name, provider.base_url, modelId, id, now(), purpose);
+    };
+
+    if (normalized.format === 'infinite-canvas') {
+      configurePurpose('image_gen', importedModelProvider(normalized.defaults.image) || normalized.providers[0], normalized.defaults.image);
+      configurePurpose('video', importedModelProvider(normalized.defaults.video) || normalized.providers[0], normalized.defaults.video);
+    } else {
+      for (const config of normalized.aiConfigs) {
+        const provider = normalized.providers.find((item) => item.source_id === config.provider_id)
+          || normalized.providers.find((item) => item.name === config.provider_name)
+          || normalized.providers.find((item) => item.base_url === config.base_url);
+        if (provider) configurePurpose(config.purpose, provider, config.model_id);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  ok(res, { imported, credentialsImported: false, customApisImported: false });
 }));
 
 /* ---------------- 自定义 API 接口 ---------------- */
@@ -712,6 +807,30 @@ app.get('/api/jobs', wrap((req, res) => ok(res, pipeline.listJobs())));
 let modelCache = new Map();
 app.get('/api/models', wrap(async (req, res) => {
   const purpose = req.query.purpose || 'thinking';
+  const selectedProvider = req.query.providerId ? q.one('SELECT id, name, protocol, models_json FROM provider WHERE id = ?', req.query.providerId) : null;
+  const storedModels = (() => { try { const value = JSON.parse(selectedProvider?.models_json || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } })();
+  const localModelsResponse = (error = null) => {
+    const records = portableModels(selectedProvider?.models_json || '[]');
+    const list = records.map((model) => model.id);
+    return {
+      list,
+      groups: {
+        text: list.filter((model) => videoMod.modelKind(model) === 'text'),
+        image: list.filter((model) => videoMod.modelKind(model) === 'image'),
+        video: list.filter((model) => videoMod.modelKind(model) === 'video'),
+      },
+      defaults: {
+        text: purpose === 'thinking' ? list[0] || '' : videoMod.pickModel('text'),
+        image: purpose === 'image_gen' ? list.find((model) => videoMod.modelKind(model) === 'image') || list[0] || '' : videoMod.pickModel('image'),
+        video: purpose === 'video' ? list.find((model) => videoMod.modelKind(model) === 'video') || list[0] || '' : videoMod.pickModel('video'),
+      },
+      modelCapabilities: Object.fromEntries(records.map((record) => [record.id, readVideoDurationCapability(record)]).filter(([, capability]) => capability)),
+      modelPrices: Object.fromEntries(records.map((record) => [record.id, formatVideoModelPrice(record)]).filter(([, price]) => price)),
+      blocked: [], source: selectedProvider?.name || '', providerId: selectedProvider?.id || null,
+      providerName: selectedProvider?.name || '', providerProtocol: selectedProvider?.protocol || null,
+      ...(error ? { error } : {}),
+    };
+  };
   const override = {};
   if (req.query.providerId) override.providerId = req.query.providerId;
   if (req.query.customApiId) override.customApiId = req.query.customApiId;
@@ -720,21 +839,31 @@ app.get('/api/models', wrap(async (req, res) => {
 
   let target;
   try { target = ai.resolveTarget(purpose, {}, override); }
-  catch (e) { return ok(res, { list: [], error: e.message }); }
+  catch (e) { return ok(res, selectedProvider && storedModels.length ? localModelsResponse(e.message) : { list: [], error: e.message }); }
 
   if (target.custom) {
     const models = q.all('SELECT models_json FROM provider WHERE 1=0');
-    return ok(res, { list: [], custom: true, error: null, hint: '当前用途走自定义接口，不需要模型列表', groups: { text: [], image: [], video: [] }, defaults: {}, blocked: [] });
+    return ok(res, { list: [], custom: true, error: null, hint: '当前用途走自定义接口，不需要模型列表', groups: { text: [], image: [], video: [] }, defaults: {}, blocked: [], providerId: null, providerName: target.label, providerProtocol: null });
   }
 
-  const decorate = (list) => {
+  const decorate = (list, modelRecords = []) => {
     // 注意：不要用网关 403 里的 models=[...] 做硬过滤——那个列表是按端点/权限组给出的，
     // 与 /video、/images/generations 的实际权限并不一致（实测 agnes-video-2.5 / image-2.5-flash 均可用）。
     const acl = videoMod.getAcl();
     const allowed = list;
     const blocked = acl ? list.filter((m) => !acl.includes(m)) : [];
+    const providerVideoDefault = allowed.includes(target.model)
+      ? target.model : allowed.find((m) => videoMod.modelKind(m) === 'video');
+    const modelCapabilities = Object.fromEntries(modelRecords
+      .map((record) => [typeof record === 'string' ? record : (record?.id || record?.name), readVideoDurationCapability(record)])
+      .filter(([id, capability]) => id && capability));
+    const modelPrices = Object.fromEntries(modelRecords
+      .map((record) => [typeof record === 'string' ? record : (record?.id || record?.name), formatVideoModelPrice(record)])
+      .filter(([id, price]) => id && price));
     return {
       list: allowed, blocked,
+      modelCapabilities,
+      modelPrices,
       groups: {
         text: allowed.filter((m) => videoMod.modelKind(m) === 'text'),
         image: allowed.filter((m) => videoMod.modelKind(m) === 'image'),
@@ -743,26 +872,33 @@ app.get('/api/models', wrap(async (req, res) => {
       defaults: {
         text: purpose === 'thinking' ? target.model : videoMod.pickModel('text'),
         image: purpose === 'image_gen' ? target.model : videoMod.pickModel('image'),
-        video: purpose === 'video' ? target.model : videoMod.pickModel('video'),
+        video: purpose === 'video' ? (override.providerId ? providerVideoDefault || '' : target.model) : videoMod.pickModel('video'),
       },
       source: target.label,
+      providerId: target.provider?.id || null,
+      providerName: target.provider?.name || target.label,
+      providerProtocol: target.provider?.protocol || target.protocol,
     };
   };
 
   const cacheKey = `${target.baseURL}|${target.apiKey.slice(-6)}`;
   const cached = modelCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < 60000 && cached.list.length) return ok(res, decorate(cached.list));
+  if (cached && Date.now() - cached.at < 60000 && cached.list.length) return ok(res, decorate(cached.list, cached.models));
 
   try {
     const r = await fetch(`${String(target.baseURL).replace(/\/+$/, '')}/models`, { headers: { Authorization: `Bearer ${target.apiKey}` } });
     const text = await r.text();
-    if (!r.ok) return ok(res, { list: [], error: `获取模型列表失败（HTTP ${r.status}）：${text.slice(0, 160)}` });
+    if (!r.ok) return ok(res, selectedProvider && storedModels.length ? localModelsResponse(`获取模型列表失败（HTTP ${r.status}）`) : { list: [], error: `获取模型列表失败（HTTP ${r.status}）：${text.slice(0, 160)}` });
     const j = JSON.parse(text);
-    const list = (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean);
-    modelCache.set(cacheKey, { at: Date.now(), list });
-    ok(res, decorate(list));
+    const remoteRecords = (j.data || j.models || []).filter((m) => typeof m === 'string' || m?.id || m?.name);
+    const localRecords = portableModels(target.provider?.models_json || '');
+    const remoteIds = new Set(remoteRecords.map((m) => typeof m === 'string' ? m : (m.id || m.name)));
+    const records = [...remoteRecords, ...localRecords.filter((model) => !remoteIds.has(model.id))];
+    const list = records.map((m) => typeof m === 'string' ? m : (m.id || m.name));
+    modelCache.set(cacheKey, { at: Date.now(), list, models: records });
+    ok(res, decorate(list, records));
   } catch (e) {
-    ok(res, { list: [], error: `获取模型列表失败：${e.message}` });
+    ok(res, selectedProvider && storedModels.length ? localModelsResponse(`获取模型列表失败：${e.message}`) : { list: [], error: `获取模型列表失败：${e.message}` });
   }
 }));
 
@@ -833,6 +969,7 @@ app.post('/api/shots/:id/video', wrap(async (req, res) => {
       image: dataUrl,
       duration: Number(b.duration) || Math.min(10, Math.max(5, Math.round(Number(shot.duration) || 5))),
       ratio: b.ratio || shot.ratio || undefined,
+      resolution: b.resolution || '1080p',
     });
     q.run('UPDATE shot SET video_url = ?, status = ?, error = NULL, update_time = ? WHERE id = ?', out.url, 'done', now(), shot.id);
     videoMod.recordMedia({
@@ -869,6 +1006,8 @@ app.post('/api/scripts/:id/videos', wrap((req, res) => {
           model, prompt: shotPromptFor(shot),
           image: dataUrl,
           duration: Math.min(10, Math.max(5, Math.round(Number(shot.duration) || 5))),
+          ratio: shot.ratio || undefined,
+          resolution: b.resolution || '1080p',
         });
         q.run('UPDATE shot SET video_url = ?, status = ?, error = NULL, update_time = ? WHERE id = ?', out.url, 'done', now(), shot.id);
         videoMod.recordMedia({ scriptId: shot.script_id, shotId: shot.id, kind: 'video', filePath: out.url, prompt: shotPromptFor(shot), model: out.model });

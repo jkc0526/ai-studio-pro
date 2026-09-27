@@ -74,7 +74,7 @@ export const api = {
   sceneImage: (id, body) => json(`/api/scenes/${id}/image`, { method: 'POST', body }),
   extractScenes: (id, body) => json(`/api/scripts/${id}/extract-scenes`, { method: 'POST', body }),
 
-  // 生产线：脚本生成 / 提示词合成
+  // 项目工作区：脚本生成 / 提示词合成
   generateScript: (id, body) => json(`/api/scripts/${id}/generate`, { method: 'POST', body }),
   composeShots: (id, body) => json(`/api/scripts/${id}/compose`, { method: 'POST', body }),
 
@@ -91,6 +91,8 @@ export const api = {
   createProvider: (body) => json('/api/providers', { method: 'POST', body }),
   updateProvider: (id, body) => json(`/api/providers/${id}`, { method: 'PUT', body }),
   deleteProvider: (id) => json(`/api/providers/${id}`, { method: 'DELETE' }),
+  importConfiguration: (body) => json('/api/config/import', { method: 'POST', body }),
+  exportConfiguration: () => json('/api/config/export'),
   listCustomApis: () => json('/api/custom-apis'),
   createCustomApi: (body) => json('/api/custom-apis', { method: 'POST', body }),
   updateCustomApi: (id, body) => json(`/api/custom-apis/${id}`, { method: 'PUT', body }),
