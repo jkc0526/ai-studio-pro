@@ -73,7 +73,7 @@ export async function callImage(arg, { model, providerId, prompt, image, images,
 }
 
 /* ---------------- 视频 ----------------
-   入参说明（mode 系列为可选；不传则沿用旧的最小请求体，保持对既有调用方兼容）：
+   入参说明（mode 系列为可选；Agnes/Seedance 在省略时按参考素材推断，其他协议保持旧请求格式）：
    - mode：Agnes 视频 mode（'text' | 'keyframe' | 'reference'）
    - referenceImages：reference 模式的参考图 URL 列表
    - firstFrame / lastFrame：keyframe 模式的首帧 / 尾帧 URL
@@ -84,13 +84,27 @@ export async function callVideo(arg, {
   mode, referenceImages, firstFrame, lastFrame, audios, size,
 } = {}) {
   const t = resolveTarget('video', arg, { model, providerId });
+  // 旧的剧本分镜单图/批量接口只传 image。Agnes 和 Seedance 都需要声明
+  // 生成模式；仅对这两类已知模式协议做推断，保留其他供应商的旧请求格式。
+  const supportsMode = !t.custom && (t.protocol === 'agnes-video'
+    || (t.protocol !== 'openai-video' && /seedance/i.test(t.model)));
+  const inferredMode = image || firstFrame || lastFrame ? 'keyframe'
+    : referenceImages?.length || audios?.length ? 'reference' : 'text';
+  const requestMode = supportsMode ? (mode || inferredMode) : mode;
+  let requestFirstFrame = firstFrame;
+  if (supportsMode && requestMode === 'keyframe') {
+    requestFirstFrame = firstFrame || image;
+    if (t.protocol === 'agnes-video' && typeof requestFirstFrame === 'string') {
+      requestFirstFrame = requestFirstFrame.replace(/^data:image\/[a-z0-9.+-]+;base64,/i, '');
+    }
+  }
   const spec = specFor('video', t, {
     model: t.model,
     prompt,
-    mode,
+    mode: requestMode,
     images: referenceImages,
     audios,
-    firstFrame,
+    firstFrame: requestFirstFrame,
     lastFrame,
     seconds: duration,
     duration: t.custom ? duration : undefined,

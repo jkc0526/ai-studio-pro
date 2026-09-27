@@ -99,6 +99,20 @@ try {
   assert.equal(videoRequest?.body?.seconds, undefined);
   assert.equal(videoResult.status, 'success');
 
+  const { callVideo } = await import('../server/ai.js');
+  const frame = 'data:image/png;base64,aGVsbG8=';
+  await callVideo('video', { model: 'seedance-2.5-480', prompt: '让分镜图动起来', image: frame, duration: 5 });
+  const seedanceShotRequest = [...calls].reverse().find((call) => call.url.endsWith('/video/generations'));
+  assert.equal(seedanceShotRequest?.body?.mode, 'keyframe', 'legacy storyboard Seedance image requests must declare keyframe mode');
+  assert.equal(seedanceShotRequest?.body?.first_frame, frame, 'Seedance keyframe requests must map legacy image to first_frame');
+  assert.equal(seedanceShotRequest?.body?.image, undefined, 'Seedance mode-aware requests must not also send legacy image');
+
+  await callVideo('video', { model: 'generic-video-model', prompt: 'keep the existing format', image: frame, duration: 5 });
+  const genericShotRequest = [...calls].reverse().find((call) => call.url.endsWith('/video/generations'));
+  assert.equal(genericShotRequest?.body?.image, frame, 'non-Seedance OpenAI-compatible models must keep the legacy image field');
+  assert.equal(genericShotRequest?.body?.mode, undefined, 'do not inject mode for unrelated models');
+  assert.equal(genericShotRequest?.body?.first_frame, undefined, 'do not inject first_frame for unrelated models');
+
   console.log('image provider routing and Seedance duration tests passed');
 } finally {
   globalThis.fetch = originalFetch;

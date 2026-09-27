@@ -1,7 +1,7 @@
 {
   "name": "weave-canvas",
   "private": true,
-  "version": "0.7.12",
+  "version": "0.7.13",
   "type": "module",
   "description": "AI漫剧工作室：剧本·分镜·角色一致性·批量生图·图生视频·成片导出",
   "scripts": {

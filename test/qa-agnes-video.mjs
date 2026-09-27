@@ -216,6 +216,21 @@ q.run('INSERT INTO ai_config (id,purpose,provider_id,base_url,api_key,model_id,u
 const CFG = { purpose: 'video', base_url: BASE, api_key: 'qa-key', model_id: MODEL, provider_id: 'pv_qa_agnes' };
 const refs6 = Array.from({ length: 6 }, (_, i) => ({ key: `图片${i + 1}`, type: 'image', url: `https://x.test/${i + 1}.png` }));
 
+{
+  // 旧剧本分镜接口只传 image；Agnes 必须将它适配为 keyframe + first_frame。
+  mockFetch([submit({ video_id: 'video_LEGACY12345', status: 'queued' }),
+    poll({ status: 'completed', url: 'https://cdn.test/legacy.mp4' }), media]);
+  const { callVideo } = await import('../server/ai.js');
+  const frameData = 'data:image/png;base64,aGVsbG8=';
+  let err;
+  try { await callVideo(CFG, { model: MODEL, prompt: '分镜图动起来', image: frameData, duration: 5, ratio: '16:9' }); }
+  catch (e) { err = e; }
+  const post = calls.find((c) => c.url.endsWith('/videos'));
+  check('C legacy shot API：Agnes 自动补 mode=keyframe', post?.body.mode === 'keyframe', err?.message || JSON.stringify(post?.body));
+  check('C legacy shot API：image 自动映射为 first_frame（不再发送 image 字段）',
+    post?.body.first_frame === 'aGVsbG8=' && !has(post.body, 'image'), err?.message || JSON.stringify(post?.body));
+}
+
 async function runVideo(data, mediaRefs = []) {
   calls = [];
   globalThis.fetch = (async (url, opts = {}) => {
