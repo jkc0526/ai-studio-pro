@@ -237,6 +237,8 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
         resultPath: 'url',
         extraUrls: [`${base}/video/generations/{{id}}`],
       },
+      // openai 兼容网关同样可能 503 队列满，接单前自动重试
+      queueFullRetryDelays: [10_000, 20_000, 40_000],
     };
   }
   if (kind === 'image') {
