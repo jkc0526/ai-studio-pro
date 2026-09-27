@@ -30,3 +30,17 @@ test/libtv-*.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# 本机基础设施（含密钥，绝不入库）
+ssh_tunnel.py
+recovered-videos/
+bridge-files/
+
+# 本地测试草稿
+test/qa-*
+test/_
+test/.qa-*
+test/probe-*
+test/check-*
+test/migrate-*
+test/cdp-*
