@@ -108,15 +108,20 @@ async function main() {
       (doubao?.models || []).some((m) => String(m.id || m).includes('seedance')), '');
 
     /* ---- 2. 桥接状态（此时应已被开机自启拉起；自启是异步的，给它最多 25 秒） ---- */
-    let st = null;
+    let st = await call('GET', '/api/doubao/status');
+    ok('状态接口可用', st.json?.success === true);
+    // 本机可能没有桥接目录（如 CI 构建机）：桥接相关用例整体跳过，不能算失败
+    const bridgeFound = st.json?.data?.found === true;
+    ok('找到桥接目录', bridgeFound, bridgeFound ? (st.json?.data?.dir || '') : 'SKIP：本机无桥接目录');
+    if (!bridgeFound) console.log('\n  （SKIP）本机没有豆包桥接目录，桥接相关用例全部跳过');
+    if (bridgeFound) {
     const upDeadline = Date.now() + 25000;
     while (Date.now() < upDeadline) {
+      if (st.json?.data?.running) break;
       st = await call('GET', '/api/doubao/status');
       if (st.json?.data?.running) break;
       await sleep(700);
     }
-    ok('状态接口可用', st.json?.success === true);
-    ok('找到桥接目录', st.json?.data?.found === true, st.json?.data?.dir || '');
     if (!st.json?.data?.running) {
       console.log('\n  ── 桥接未运行，诊断信息 ──');
       console.log(`  lastError: ${st.json?.data?.lastError}`);
@@ -142,15 +147,20 @@ async function main() {
     ok('桥接已随软件自动启动', st.json?.data?.running === true, `baseUrl=${st.json?.data?.baseUrl}`);
     ok('返回号池快照', !!st.json?.data?.pool, `账号数 ${st.json?.data?.pool?.accountCount}`);
     ok('状态里带上预置供应商信息', st.json?.data?.provider?.name === '豆包（网页版号池）');
+    }  // ← bridgeFound：无桥接目录时，以上桥接状态用例到此为止
 
     // 桥接是单例（固定端口）。若此刻已有别的 WeaveCanvas 实例在跑，本实例会复用它 ——
     // 那是一个**共享的、用户真实的号池**，绝不能拿它跑会改数据的用例（否则会往真实号池里塞测试账号）。
-    ownsBridge = st.json?.data?.spawnedByUs === true;
+    ownsBridge = bridgeFound && st.json?.data?.spawnedByUs === true;
 
     /* ---- 3. 账号池代理 ---- */
-    let accounts = await call('GET', '/api/doubao/accounts');
-    ok('代理读取账号列表', Array.isArray(accounts.json?.data) && accounts.json.data.length >= 1,
-      `共 ${accounts.json?.data?.length} 个`);
+    if (!bridgeFound) {
+      console.log('  （SKIP）本机没有桥接目录，跳过账号池用例');
+    } else {
+      let accounts = await call('GET', '/api/doubao/accounts');
+      ok('代理读取账号列表', Array.isArray(accounts.json?.data) && accounts.json.data.length >= 1,
+        `共 ${accounts.json?.data?.length} 个`);
+    }
 
     if (!ownsBridge) {
       console.log('  （桥接由别的实例启动，跳过所有会改动号池的用例，只做只读校验）');
