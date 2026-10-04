@@ -297,7 +297,8 @@ const HANDLERS = {
       images: imageUrls.filter((url) => url.startsWith('http') || url.startsWith('data:') || url.startsWith('/outputs/')),
       size: node.data?.size || '1024x1024',
     });
-    return { url: r.url, imageUrl: r.url, kind: 'image', text: prompt, extra: { modelUsed: r.model, imageUrl } };
+    return { url: r.url, imageUrl: r.url, kind: 'image', text: prompt,
+      extra: { modelUsed: r.model, referenceImageUrl: imageUrl } };
   },
   async gridNode(node, ctx) {
     const prompt = buildPrompt(node, ctx.upstreamTexts);
@@ -319,6 +320,7 @@ const HANDLERS = {
     };
   },
   async videoNode(node, ctx) {
+    const resumeTask = ctx.resumeTask;
     const uiMode = node.data?.mode || 'text';
     const prompt = buildPrompt(node, ctx.upstreamTexts) || (node.data?.prompt || '');
     // 上游图片（按 @图片N 引用顺序或连线顺序）
@@ -333,21 +335,21 @@ const HANDLERS = {
     if (uiMode === 'omni') {
       mode = 'reference';
       referenceImages = images.slice(0, 5);
-      if (!referenceImages.length) throw new Error('「全能参考」需要至少一张参考图：请把图片节点连到本节点左侧');
+      if (!referenceImages.length && !resumeTask) throw new Error('「全能参考」需要至少一张参考图：请把图片节点连到本节点左侧');
     } else if (uiMode === 'image') {
       mode = 'keyframe';
       firstFrame = images[0] || null;
-      if (!firstFrame) throw new Error('「图生视频」需要一张首帧图：请把图片节点连到本节点左侧');
+      if (!firstFrame && !resumeTask) throw new Error('「图生视频」需要一张首帧图：请把图片节点连到本节点左侧');
     } else if (uiMode === 'frames') {
       mode = 'keyframe';
       firstFrame = images[0] || null;
       lastFrame = images[1] || null;
-      if (!firstFrame) throw new Error('「首尾帧」需要一张首帧图：请把图片节点连到本节点左侧');
+      if (!firstFrame && !resumeTask) throw new Error('「首尾帧」需要一张首帧图：请把图片节点连到本节点左侧');
     } else {
       mode = 'text';
     }
     // Agnes 的 prompt 为必填，任何模式都不能为空
-    if (!prompt) throw new Error('提示词为空：请描述你想生成的视频内容（或连接上游文本节点）');
+    if (!prompt && !resumeTask) throw new Error('提示词为空：请描述你想生成的视频内容（或连接上游文本节点）');
 
     const duration = clampVideoSeconds(node.data?.duration, node.data?.modelId, node.data?.durationRange);
     const size = resolveVideoSize(node.data?.resolution);
@@ -362,13 +364,15 @@ const HANDLERS = {
       duration,
       size,
       ratio: node.data?.ratio || '16:9',
+      resumeTask,
+      onTask: ctx.reportTask,
     });
     return {
       url: r.url,
       videoUrl: r.url,
       kind: 'video',
       text: prompt || r.url,
-      extra: { modelUsed: r.model, mode, imageUrl: firstFrame || referenceImages?.[0] || null },
+      extra: { modelUsed: r.model, mode, referenceImageUrl: firstFrame || referenceImages?.[0] || null },
     };
   },
 
@@ -479,10 +483,16 @@ function existingOutput(node) {
 }
 
 /* ---------- 6. 主调度 ---------- */
-export async function runWorkflow({ nodes = [], edges = [], targetIds = [], configs = {}, emitter = null }) {
+export async function runWorkflow({ nodes = [], edges = [], targetIds = [], configs = {}, emitter = null,
+  onTask, freshNodeIds = [] }) {
   validateGraph(nodes, edges);
 
-  const stages = topoStages(nodes, edges, targetIds);
+  const freshSet = new Set(freshNodeIds);
+  const recoveringNodes = new Set(nodes.filter((node) => node.type === 'videoNode'
+    && !freshSet.has(node.id) && node.data?.upstreamTask?.status === 'accepted'
+    && (node.data.upstreamTask.id || node.data.upstreamTask.resultUrl)).map((node) => node.id));
+  const executionEdges = edges.filter((edge) => !recoveringNodes.has(edge.target));
+  const stages = topoStages(nodes, executionEdges, targetIds);
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const outputs = new Map();   // nodeId → output
   const patches = [];          // 给前端的增量更新
@@ -514,15 +524,22 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
         }
       }
 
-      const upList = incoming(nodes, edges, node.id);
+      const upList = incoming(nodes, executionEdges, node.id);
       upList.forEach((u) => { u.output = outputs.get(u.node.id) || null; });
+      const stepBase = { nodeId: node.id, kind: node.type, stage: si };
       const ctx = {
         configs,
         upstreamNodes: upList.map((u) => ({ ...u.node, _output: u.output })),
         upstreamTexts: upList.map((u) => u.output?.text ?? ''),
+        resumeTask: !freshSet.has(node.id) && node.data?.upstreamTask?.status === 'accepted' ? node.data.upstreamTask : null,
+        reportTask: async (task) => {
+          stepBase.upstreamTask = task;
+          patches.push({ nodeId: node.id, data: { upstreamTask: task, generationPhase: task.phase } });
+          emitter?.emitNode({ nodeId: node.id, kind: node.type, status: 'running', upstreamTask: task, generationPhase: task.phase });
+          await onTask?.({ nodeId: node.id, upstreamTask: task });
+        },
       };
 
-      const stepBase = { nodeId: node.id, kind: node.type, stage: si };
       emitter?.emitNode({ nodeId: node.id, kind: node.type, status: 'running', stage: si });
       patches.push({ nodeId: node.id, data: { status: 'running', error: null, stage: si, startedAt: new Date().toISOString() } });
       const t0 = Date.now();
@@ -539,7 +556,12 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
       }
 
       // 视频请求一旦被接单，重跑整个 handler 可能产生第二个收费任务。
-      return withRetry(() => handler(node, ctx), {
+      return withRetry(async () => {
+        if (freshSet.has(node.id) && node.data?.upstreamTask?.status === 'accepted') {
+          await ctx.reportTask({ ...node.data.upstreamTask, status: 'abandoned', phase: 'done', updatedAt: new Date().toISOString() });
+        }
+        return handler(node, ctx);
+      }, {
         timeoutMs: perNodeTimeout(node),
         retries: node.type === 'videoNode' ? 0 : MAX_RETRIES,
       })
@@ -557,7 +579,7 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
           if (out?.text) patch.output = out.text;
           if (out?.extra?.modelUsed) patch.modelUsed = out.extra.modelUsed;
           if (out?.extra?.tokens) patch.tokens = out.extra.tokens;
-          if (out?.extra?.imageUrl) patch.imageUrl = out.extra.imageUrl;
+          if (out?.extra?.referenceImageUrl) patch.referenceImageUrl = out.extra.referenceImageUrl;
           if (out?.extra?.scriptTitle) patch.scriptTitle = out.extra.scriptTitle;
           // SSE 实时事件必须带完整结果字段，前端才能回写 imageUrl / videoUrl / images / output 等
           emitter?.emitNode({ nodeId: node.id, kind: node.type, status: 'done', ms, stage: si, ...patch });
@@ -572,7 +594,7 @@ export async function runWorkflow({ nodes = [], edges = [], targetIds = [], conf
           // 仅当"无可救药"时记 error；transient 重试 3 次仍失败也算 error
           emitter?.emitNode({ nodeId: node.id, kind: node.type, status: 'error', error: msg, ms, stage: si });
           patches.push({ nodeId: node.id, data: { status: 'error', error: msg } });
-          steps.push({ ...stepBase, status: 'error', error: msg, ms });
+          steps.push({ ...stepBase, status: 'error', error: msg, ms, phase: err.phase, networkCode: err.networkCode });
           // 注意 — 不 break，让独立 stage 后续节点能跑
         });
     });

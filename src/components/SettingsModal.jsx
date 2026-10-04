@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { sanitizeConfigForImport } from '../configImport.js';
+import DoubaoPoolPanel from './DoubaoPoolPanel.jsx';
 
 const PURPOSES = [
   { key: 'thinking', title: '文本模型', desc: '剧本 / 分镜拆解 / AI 助手' },
@@ -234,52 +236,7 @@ export default function SettingsModal({ open, onClose, notify }) {
     setBusy('import');
     try {
       const raw = JSON.parse(await file.text());
-      const safeModel = (model) => {
-        if (typeof model === 'string') return model;
-        if (!model || typeof model !== 'object') return null;
-        const fields = ['id', 'name', 'model', 'capability', 'kind', 'type', 'description', 'desc', 'durationRange', 'price'];
-        const safe = Object.fromEntries(fields.filter((key) => model[key] !== undefined).map((key) => [key, model[key]]));
-        if (safe.durationRange && typeof safe.durationRange === 'object') {
-          const durationFields = ['min', 'max', 'default', 'minSeconds', 'maxSeconds', 'seconds', 'step'];
-          safe.durationRange = Object.fromEntries(durationFields.filter((key) => safe.durationRange[key] !== undefined).map((key) => [key, safe.durationRange[key]]));
-        }
-        if (safe.price !== undefined && !['string', 'number'].includes(typeof safe.price)) delete safe.price;
-        return safe;
-      };
-      const safeBaseUrl = (value) => {
-        if (typeof value !== 'string' || !value.trim()) return value;
-        const parsed = new URL(value);
-        if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Base URL 必须是无账号密码的 HTTP(S) 地址');
-        parsed.search = '';
-        parsed.hash = '';
-        return parsed.toString().replace(/\/$/, '');
-      };
-      let safeConfig;
-      if (raw?.app === 'infinite-canvas' && raw.config && typeof raw.config === 'object') {
-        const configFields = ['baseUrl', 'apiFormat', 'models', 'imageModel', 'videoModel', 'model'];
-        const channelFields = ['id', 'name', 'baseUrl', 'base_url', 'apiFormat', 'protocol', 'enabled', 'models'];
-        safeConfig = {
-          app: raw.app, version: raw.version,
-          config: Object.fromEntries(configFields.filter((key) => raw.config[key] !== undefined).map((key) => [key, key === 'baseUrl' ? safeBaseUrl(raw.config[key]) : key === 'models' && Array.isArray(raw.config[key]) ? raw.config[key].map(safeModel).filter(Boolean) : raw.config[key]])),
-        };
-        if (Array.isArray(raw.config.channels)) safeConfig.config.channels = raw.config.channels.map((channel) => Object.fromEntries(
-          channelFields.filter((key) => channel?.[key] !== undefined).map((key) => [key, ['baseUrl', 'base_url'].includes(key) ? safeBaseUrl(channel[key]) : key === 'models' && Array.isArray(channel[key]) ? channel[key].map(safeModel).filter(Boolean) : channel[key]]),
-        ));
-      } else if (raw?.app === 'weave-canvas' && raw.schemaVersion === 1) {
-        safeConfig = {
-          app: 'weave-canvas', schemaVersion: 1,
-          providers: (Array.isArray(raw.providers) ? raw.providers : []).map((provider) => ({
-            id: provider?.id, name: provider?.name, protocol: provider?.protocol, base_url: safeBaseUrl(provider?.base_url),
-            models: Array.isArray(provider?.models) ? provider.models.map(safeModel).filter(Boolean) : [],
-            enabled: provider?.enabled,
-          })),
-          aiConfigs: (Array.isArray(raw.aiConfigs) ? raw.aiConfigs : []).map((config) => ({
-            purpose: config?.purpose, provider: config?.provider, provider_name: config?.provider_name,
-            base_url: safeBaseUrl(config?.base_url), model_id: config?.model_id, provider_id: config?.provider_id,
-            custom_api_id: config?.custom_api_id, notes: config?.notes,
-          })),
-        };
-      } else throw new Error('不支持的配置文件格式');
+      const safeConfig = sanitizeConfigForImport(raw);
       const result = await api.importConfiguration(safeConfig);
       await load();
       const providerCount = result.imported?.length || 0;
@@ -420,6 +377,7 @@ export default function SettingsModal({ open, onClose, notify }) {
               <button role="tab" aria-selected={tab === 'provider'} aria-pressed={tab === 'provider'} className={tab === 'provider' ? 'active' : ''} onClick={() => setTab('provider')}>自定义</button>
             </div>
             <button className={`model-center-custom-link ${tab === 'custom' ? 'active' : ''}`} onClick={() => setTab('custom')}>自定义接口</button>
+            <button className={`model-center-custom-link ${tab === 'bridge' ? 'active' : ''}`} onClick={() => setTab('bridge')}>豆包号池</button>
             <div className="config-transfer-actions">
               <button onClick={() => configFileRef.current?.click()} disabled={!!busy}>导入配置</button>
               <button onClick={exportConfiguration} disabled={!!busy}>{busy === 'export' ? '导出中…' : '导出配置'}</button>
@@ -773,6 +731,8 @@ export default function SettingsModal({ open, onClose, notify }) {
               )}
             </>
           )}
+
+          {tab === 'bridge' && <DoubaoPoolPanel />}
         </div>
 
         <div className="modal-foot">

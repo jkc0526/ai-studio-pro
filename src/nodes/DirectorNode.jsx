@@ -8,15 +8,14 @@ const SHOTS = [
   { v: 'crane', label: '升降镜头', hint: '机位抬升 / 下降，交代空间' },
 ];
 
-/* 3D 导演台：编排相机运动与空间关系，产出「运镜描述」供视频节点引用
-   当前为编排台（生成结构化运镜提示词），3D 预览与实时渲染待后续接入。 */
+/* 生成文字运镜描述供视频节点引用；此节点不提供 3D 预览或实时渲染。 */
 export default function DirectorNode({ id, data, selected }) {
   const ctx = useCanvas();
   const shot = data.cameraShot || 'orbit';
   const cfg = SHOTS.find((s) => s.v === shot) || SHOTS[0];
 
   const apply = () => {
-    const text = `【3D导演台】相机运动：${cfg.label}（${cfg.hint}）${data.subject ? `；主体：${data.subject}` : ''}${data.space ? `；空间：${data.space}` : ''}`;
+    const text = `【运镜提示】相机运动：${cfg.label}（${cfg.hint}）${data.subject ? `；主体：${data.subject}` : ''}${data.space ? `；空间：${data.space}` : ''}`;
     ctx.updateNode(id, { output: text });
     ctx.copy?.(text);
   };
@@ -39,7 +38,7 @@ export default function DirectorNode({ id, data, selected }) {
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6">
           <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" />
         </svg>
-        {data.label || '3D导演台'}
+        {data.label === '3D导演台' ? '运镜提示' : data.label || '运镜提示'}
       </div>
 
       <div className="oii-card has-media" style={{ aspectRatio: '16 / 9' }}>

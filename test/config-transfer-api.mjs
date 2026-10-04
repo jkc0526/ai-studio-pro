@@ -59,6 +59,8 @@ if (isMainThread) {
   const modelsResponse = await fetch(`${base}/api/models?purpose=video&providerId=${provider.id}`);
   const modelsPayload = await modelsResponse.json();
   assert.ok(modelsPayload.data.list.includes('seedance2.5-video'), 'saved model choices remain available without credentials');
+  const defaultModels = await (await fetch(`${base}/api/models?purpose=video`)).json();
+  assert.ok(defaultModels.data.list.includes('seedance2.5-video'), 'the configured provider also remains selectable without credentials');
 
   const exported = await fetch(`${base}/api/config/export`);
   const exportedPayload = await exported.json();

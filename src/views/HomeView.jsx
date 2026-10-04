@@ -23,16 +23,16 @@ export default function HomeView() {
       await api.updateScript(script.id, { content: idea.trim() });
       await reloadScripts(script.id);
       openAgentDraft({ scriptId: script.id, goal: idea.trim(), skillId: pickedSkill?.id || null, count, styleId });
-      notify('项目已创建，Agent 草稿已准备好；确认后再开始生成');
+      notify('项目已创建，请确认创作任务后开始');
     } catch (e) { notify(e.message, true); } finally { setBusy(''); }
   };
 
   return (
     <div className="view-body home">
       <div className="home-head">
-        <span className="eyebrow">WEAVECANVAS WORKSPACE</span>
+        <span className="eyebrow">AI漫剧工作室</span>
         <h2>从一句话开始创作</h2>
-        <p className="hint">先把想法交给 Agent，确认后再运行；项目会自动保留在同一个工作区里。</p>
+        <p className="hint">写下故事想法，创建项目后确认创作任务，再开始生成。</p>
       </div>
 
       <div className="hero-card">
@@ -50,18 +50,18 @@ export default function HomeView() {
           <select style={{ width: 110 }} value={count} onChange={(e) => setCount(Number(e.target.value))} title="预期镜头数">
             {[4, 6, 9, 12, 16].map((n) => <option key={n} value={n}>{n} 个镜头</option>)}
           </select>
-          {pickedSkill && <span className="pill">已选 Skill：{pickedSkill.title}</span>}
+          {pickedSkill && <span className="pill">已选工作流：{pickedSkill.title}</span>}
           <span className="spacer" />
           <span className="hint">{idea.length} 字</span>
           <button className="primary" onClick={run} disabled={busy === 'run'}>
-            {busy === 'run' ? '正在创建…' : '创建项目并预填 Agent ↑'}
+            {busy === 'run' ? '正在创建…' : '开始创作 ↑'}
           </button>
         </div>
       </div>
 
       {!!skills.length && (
         <section className="home-sec skill-recommendations">
-          <div className="home-sec-head"><b>推荐 Skill</b><span className="hint">选一个工作方式，目标会自动带入 Agent</span></div>
+          <div className="home-sec-head"><b>创作工作流</b><span className="hint">选择后会带入创作任务，启动前可修改</span></div>
           <SkillCatalog compact skills={skills} selectedId={pickedSkill?.id} onUse={(skill) => setPickedSkill(pickedSkill?.id === skill.id ? null : skill)} />
         </section>
       )}

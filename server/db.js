@@ -151,6 +151,7 @@ function ensureColumn(table, column, ddl) {
 ensureColumn('ai_config', 'provider_id', 'provider_id TEXT');
 ensureColumn('ai_config', 'custom_api_id', 'custom_api_id TEXT');
 ensureColumn('ai_config', 'notes', 'notes TEXT');
+ensureColumn('asset', 'script_id', 'script_id TEXT');
 ensureColumn('shot', 'ratio', 'ratio TEXT');
 // 分镜 → 场景引用（人物引用已有 character_ids）
 ensureColumn('shot', 'scene_id', 'scene_id TEXT');
@@ -438,6 +439,52 @@ export function seed() {
         sort, JSON.stringify(s.spec), now(), now());
     }
   }
+}
+
+/* ---------------- 豆包（网页版号池）预置供应商 ----------------
+   指向本地 doubao-bridge 桥接服务。base_url 由调用方传入（桥接端口可能被改过）。
+   API Key 填 'local'：桥接是本地服务不校验，但 resolveTarget 要求非空。
+   协议用 openai-video：提交 /video/generations、轮询 /videos/{id}，与桥接逐条对齐。 */
+export const DOUBAO_PROVIDER_NAME = '豆包（网页版号池）';
+
+/* 兜底清单：正常情况下会由 doubaoBridge 从桥接的 config.json 读取真实模型列表传入，
+   避免两边各硬编码一份导致不同步。顺序按「消耗从低到高」——宿主会用第一个视频模型作默认值。 */
+export const DOUBAO_MODELS = [
+  { id: 'doubao-seedance-2-0-fast', name: 'Seedance 2.0 Fast（快速出片·基准1倍）' },
+  { id: 'doubao-seedance-2-0-mini', name: 'Seedance 2.0 Mini（日常·基准1倍）' },
+  { id: 'doubao-seedance-2-0', name: 'Seedance 2.0（进阶·2倍消耗）' },
+  { id: 'doubao-seedance-2-5', name: 'Seedance 2.5（旗舰·5倍消耗）' },
+];
+
+/**
+ * 幂等地创建/修复「豆包（网页版号池）」供应商。
+ * 每次启动都调用：老库也能补上，用户改坏 base_url 时能被修回。
+ * @param baseURL 桥接地址（端口可能被改过）
+ * @param models  模型清单，由桥接的 config.json 提供；不传则用兜底清单
+ */
+export function ensureDoubaoProvider(baseURL, models = null) {
+  const url = String(baseURL || 'http://127.0.0.1:9788/v1');
+  const list = Array.isArray(models) && models.length ? models : DOUBAO_MODELS;
+  const existing = one('SELECT * FROM provider WHERE name = ?', DOUBAO_PROVIDER_NAME);
+
+  if (existing) {
+    // 只修地址与模型清单；api_key 若是空的（用户没填过）补上 local，其它情况不动
+    const key = existing.api_key && String(existing.api_key).trim() ? existing.api_key : 'local';
+    run('UPDATE provider SET protocol = ?, base_url = ?, api_key = ?, models_json = ?, update_time = ? WHERE id = ?',
+      'openai-video', url, key, JSON.stringify(list), now(), existing.id);
+    return { id: existing.id, created: false, baseURL: url, models: list };
+  }
+
+  const id = uid('pv');
+  run('INSERT INTO provider (id, name, protocol, base_url, api_key, models_json, notes, enabled, create_time, update_time) VALUES (?,?,?,?,?,?,?,1,?,?)',
+    id, DOUBAO_PROVIDER_NAME, 'openai-video', url, 'local', JSON.stringify(list),
+    '本地 doubao-bridge 桥接：用豆包网页版免费额度出视频，支持多账号号池（每账号每天 10 次）。需先在「设置 → 豆包号池」里启动桥接服务。',
+    now(), now());
+  return { id, created: true, baseURL: url, models: list };
+}
+
+export function findDoubaoProvider() {
+  return one('SELECT * FROM provider WHERE name = ?', DOUBAO_PROVIDER_NAME) || null;
 }
 
 export const q = { one, all, run };

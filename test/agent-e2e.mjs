@@ -13,11 +13,12 @@
 import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const DATA_DIR = path.join(ROOT, 'data', 'tmp', 'agent-e2e');
+const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'weave-agent-e2e-'));
 
 let pass = 0, fail = 0;
 const check = (name, cond, extra = '') => {
@@ -174,8 +175,6 @@ const isTerminal = (r) => ['done', 'failed', 'stopped'].includes(r.status);
    主流程
    ============================================================================ */
 (async () => {
-  fs.rmSync(DATA_DIR, { recursive: true, force: true });
-  fs.mkdirSync(DATA_DIR, { recursive: true });
   process.env.WEAVE_DATA_DIR = DATA_DIR;
 
   const mock = await startMockModel();

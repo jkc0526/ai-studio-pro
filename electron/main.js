@@ -4,17 +4,19 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import electronUpdater from 'electron-updater';
 import { createUpdaterController } from './updaterController.js';
-import { importLegacyDataDirectory } from './dataMigration.js';
+import { importLegacyDataDirectory, resolveUserDataDirectory } from './dataMigration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(__dirname, '..');
 const isPackaged = app.isPackaged;
 
-// 固定到旧产品名对应的目录，改品牌后继续使用原有配置、数据库和生成素材。
-app.setPath('userData', path.join(app.getPath('appData'), 'WeaveCanvas'));
+// Reopen the original package-name directory when it exists, so branding changes
+// do not make an existing database and generated assets appear to be missing.
+app.setPath('userData', resolveUserDataDirectory(app.getPath('appData')));
 
 let mainWindow = null;
 let serverInfo = null;
+let bridgeModule = null;
 const { autoUpdater } = electronUpdater;
 const updater = createUpdaterController({
   autoUpdater,
@@ -74,8 +76,9 @@ async function boot() {
 
   try {
     // 必须在设置好数据目录之后再加载服务端（db.js 在导入时就确定数据目录）
-    const { startServer } = await import('../server/index.js');
-    serverInfo = await startServer({ port: Number(process.env.WEAVE_PORT) || 8787 });
+    const mod = await import('../server/index.js');
+    bridgeModule = mod.doubaoBridge || null;
+    serverInfo = await mod.startServer({ port: Number(process.env.WEAVE_PORT) || 8787 });
   } catch (err) {
     dialog.showErrorBox('AI漫剧工作室启动失败', `本地服务无法启动：${err.stack || err.message}`);
     app.quit();
@@ -141,6 +144,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => {
+    // 收掉由 WeaveCanvas 拉起的豆包桥接进程（账号浏览器实例会保留，下次直接复用）
+    try { bridgeModule?.stop(); } catch { /* ignore */ }
     if (serverInfo?.server) serverInfo.server.close();
     app.quit();
   });

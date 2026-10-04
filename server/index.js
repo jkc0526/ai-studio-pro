@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { db, q, seed, uid, now, ROOT, DATA_DIR, OUTPUT_DIR } from './db.js';
+import { db, q, seed, uid, now, ROOT, DATA_DIR, OUTPUT_DIR, ensureDoubaoProvider, findDoubaoProvider, DOUBAO_PROVIDER_NAME } from './db.js';
 import { runWorkflow, ProgressEmitter } from './engine.js';
 import * as pipeline from './pipeline.js';
 import * as videoMod from './video.js';
@@ -12,6 +12,7 @@ const { callLLM } = ai;
 import * as endpointMod from './endpoint.js';
 import * as agentsMod from './agents.js';
 import * as skillsMod from './skills.js';
+import * as doubaoBridge from './doubaoBridge.js';
 import { formatVideoModelPrice, readVideoDurationCapability } from '../shared/videoCapabilities.js';
 import { normalizeConfigImport } from './configTransfer.js';
 
@@ -20,6 +21,14 @@ const app = express();
 app.use(express.json({ limit: '40mb' }));
 
 seed();
+// 豆包号池桥接：注册/修复预置供应商（幂等，每次启动都跑，老库也能补上）
+// 模型清单以桥接的 config.json 为准，避免两边各硬编码一份
+try {
+  const dir = doubaoBridge.resolveBridgeDir();
+  ensureDoubaoProvider(`${doubaoBridge.bridgeBaseUrl(dir)}/v1`, doubaoBridge.bridgeModels(dir));
+} catch (e) {
+  console.warn('[doubao] 预置供应商注册失败：', e.message);
+}
 
 const ok = (res, data) => res.json({ success: true, data });
 const fail = (res, msg, code = 400) => res.status(code).json({ success: false, error: msg });
@@ -47,13 +56,44 @@ app.post('/api/projects', wrap((req, res) => {
 /* ---------------- 画布 ---------------- */
 const emptyCanvas = () => JSON.stringify({ nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
 
+function recoverCanvasVideoTasks(canvasId, canvas, { includeCompleted = false } = {}) {
+  const latestStepByNode = new Map();
+  for (const row of q.all('SELECT steps_json FROM run_log WHERE canvas_id = ? ORDER BY create_time DESC LIMIT 30', canvasId)) {
+    let steps;
+    try { steps = JSON.parse(row.steps_json || '[]'); } catch { continue; }
+    for (const step of steps) {
+      // A newer attempt without a receipt also supersedes old completed results.
+      if (step.nodeId && !latestStepByNode.has(step.nodeId)) latestStepByNode.set(step.nodeId, step);
+    }
+  }
+  for (const node of canvas.nodes || []) {
+    const step = latestStepByNode.get(node.id);
+    const task = step?.upstreamTask;
+    if (node.type !== 'videoNode' || !task || (node.data?.status === 'done' && node.data?.videoUrl)) continue;
+    if (node.data?.upstreamTask && node.data.upstreamTask.id !== task.id) continue;
+    if (task.status === 'accepted') {
+      node.data = { ...node.data, upstreamTask: task, generationPhase: task.phase };
+    } else if (includeCompleted && task.status === 'completed' && task.localUrl && node.data?.status !== 'draft') {
+      const asset = q.one('SELECT prompt FROM asset WHERE canvas_id = ? AND node_id = ? AND file_path = ? ORDER BY create_time DESC LIMIT 1',
+        canvasId, node.id, task.localUrl);
+      const sameModel = !node.data?.modelId || node.data.modelId === task.model;
+      const sameProvider = !node.data?.providerId || node.data.providerId === task.providerId;
+      if (asset && asset.prompt === (node.data?.prompt || '') && sameModel && sameProvider) {
+        node.data = { ...node.data, upstreamTask: task, generationPhase: 'done', status: 'done', error: null,
+          videoUrl: task.localUrl, modelUsed: task.model, lastMs: step.ms };
+      }
+    }
+  }
+  return canvas;
+}
+
 app.get('/api/canvases', wrap((req, res) => ok(res,
   q.all('SELECT id, project_id, title, node_count, cover_image_url, create_time, update_time FROM canvas ORDER BY update_time DESC'))));
 
 app.get('/api/canvases/:id', wrap((req, res) => {
   const row = q.one('SELECT * FROM canvas WHERE id = ?', req.params.id);
   if (!row) return fail(res, '画布不存在', 404);
-  ok(res, { ...row, canvas: JSON.parse(row.canvas_json || emptyCanvas()) });
+  ok(res, { ...row, canvas: recoverCanvasVideoTasks(row.id, JSON.parse(row.canvas_json || emptyCanvas()), { includeCompleted: true }) });
 }));
 
 app.post('/api/canvases', wrap((req, res) => {
@@ -83,6 +123,12 @@ app.delete('/api/canvases/:id', wrap((req, res) => {
 
 /* ---------------- AI 配置（三个用途：文本/图像/视频） ---------------- */
 const maskKey = (k) => (k ? `${k.slice(0, 6)}••••${k.slice(-4)}` : '');
+// 设置页要能显示尚未填完的配置；真正生成和「测试连接」时才校验可用性。
+const configuredSourceName = (cfg) => {
+  if (cfg.custom_api_id) return q.one('SELECT name FROM custom_api WHERE id = ?', cfg.custom_api_id)?.name || cfg.purpose;
+  if (cfg.provider_id) return q.one('SELECT name FROM provider WHERE id = ?', cfg.provider_id)?.name || cfg.purpose;
+  return cfg.purpose;
+};
 
 app.get('/api/ai-config', wrap((req, res) => ok(res,
   q.all('SELECT * FROM ai_config').map((c) => ({
@@ -91,7 +137,7 @@ app.get('/api/ai-config', wrap((req, res) => ok(res,
     provider_id: c.provider_id || null, custom_api_id: c.custom_api_id || null,
     provider_name: c.provider_id ? q.one('SELECT name FROM provider WHERE id = ?', c.provider_id)?.name || null : null,
     custom_api_name: c.custom_api_id ? q.one('SELECT name FROM custom_api WHERE id = ?', c.custom_api_id)?.name || null : null,
-    effective: ai.resolveTarget(c.purpose).label,
+    effective: configuredSourceName(c),
   })))));
 
 app.put('/api/ai-config/:purpose', wrap((req, res) => {
@@ -113,7 +159,7 @@ app.put('/api/ai-config/:purpose', wrap((req, res) => {
     purpose: req.params.purpose, saved: true, base_url: saved.base_url, model_id: saved.model_id,
     has_key: !!saved.api_key, key_hint: maskKey(saved.api_key),
     provider_id: saved.provider_id, custom_api_id: saved.custom_api_id,
-    effective: ai.resolveTarget(req.params.purpose).label,
+    effective: configuredSourceName(saved),
   });
 }));
 
@@ -403,12 +449,41 @@ app.delete('/api/snippets/:id', wrap((req, res) => {
 }));
 
 /* ---------------- 工作流执行（SSE 实时进度） ---------------- */
+function recordCanvasAssets({ canvasId, scriptId, nodes, patches }) {
+  const nodeTypes = new Map(nodes.map((node) => [node.id, node.type]));
+  const linkedScriptId = scriptId && q.one('SELECT id FROM script WHERE id = ?', scriptId)
+    ? scriptId : null;
+  for (const { nodeId, data } of patches) {
+    if (data?.status !== 'done') continue;
+    const type = nodeTypes.get(nodeId);
+    const mediaType = ['videoNode', 'composeNode'].includes(type) ? 'video'
+      : ['imageNode', 'gridNode'].includes(type) ? 'image' : null;
+    const outputUrl = mediaType === 'video' ? data.videoUrl : data.imageUrl;
+    if (!mediaType || !outputUrl) continue;
+    q.run(`INSERT INTO asset (id, canvas_id, script_id, node_id, file_path, media_type, prompt, model, create_time)
+      VALUES (?,?,?,?,?,?,?,?,?)`,
+    uid('as'), canvasId || null, linkedScriptId, nodeId, outputUrl, mediaType,
+    nodes.find((node) => node.id === nodeId)?.data?.prompt || '', data.modelUsed || '', now());
+  }
+}
+
 app.post('/api/run', wrap(async (req, res) => {
-  const { canvasId, canvas, nodeIds = [], stream = true } = req.body || {};
+  const { canvasId, scriptId, canvas, nodeIds = [], freshNodeIds = [], stream = true } = req.body || {};
   if (!canvas?.nodes) return fail(res, '缺少画布数据');
+
+  // Recover accepted tasks even if the browser closed before its debounced save.
+  if (canvasId) recoverCanvasVideoTasks(canvasId, canvas);
 
   const configs = {};
   for (const c of q.all('SELECT * FROM ai_config')) configs[c.purpose] = c;
+  const runId = uid('run');
+  q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
+    runId, canvasId || null, 'running', '[]', null, now());
+  const acceptedTasks = new Map();
+  const onTask = ({ nodeId, upstreamTask }) => {
+    acceptedTasks.set(nodeId, { nodeId, kind: 'videoNode', status: 'running', upstreamTask });
+    q.run('UPDATE run_log SET steps_json = ? WHERE id = ?', JSON.stringify([...acceptedTasks.values()]), runId);
+  };
 
   console.log('[api/run] stream=', stream, 'nodes=', canvas.nodes.length);
 
@@ -416,18 +491,13 @@ app.post('/api/run', wrap(async (req, res) => {
   if (!stream) {
     const startedAt = Date.now();
     try {
-      const result = await runWorkflow({ nodes: canvas.nodes, edges: canvas.edges || [], targetIds: nodeIds, configs });
-      const runId = uid('run');
-      q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
-        runId, canvasId || null, result.status, JSON.stringify(result.steps), result.error, now());
-      for (const p of result.patches) {
-        if (!p.data?.imageUrl) continue;
-        q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
-          uid('as'), canvasId || null, p.nodeId, p.data.imageUrl, 'image',
-          p.data.promptUsed || '', p.data.modelUsed || '', now());
-      }
+      const result = await runWorkflow({ nodes: canvas.nodes, edges: canvas.edges || [], targetIds: nodeIds, configs, onTask, freshNodeIds });
+      recordCanvasAssets({ canvasId, scriptId, nodes: canvas.nodes, patches: result.patches });
+      q.run('UPDATE run_log SET status = ?, steps_json = ?, error = ? WHERE id = ?',
+        result.status, JSON.stringify(result.steps), result.error || null, runId);
       ok(res, { ...result, runId, ms: Date.now() - startedAt });
     } catch (e) {
+      q.run('UPDATE run_log SET status = ?, error = ? WHERE id = ?', 'failed', e.message, runId);
       return res.status(400).json({ success: false, error: e.message });
     }
     return;
@@ -443,6 +513,12 @@ app.post('/api/run', wrap(async (req, res) => {
   const send = (event, data) => {
     try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
   };
+  // Generation can remain queued without node events for several minutes.
+  // SSE comments keep idle connections alive without changing client progress.
+  const heartbeat = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { /* client gone */ }
+  }, 15000);
+  res.once('close', () => clearInterval(heartbeat));
   const emitter = new ProgressEmitter();
   emitter.on('node', (p) => send('node', p));
   emitter.on('progress', (p) => send('progress', p));
@@ -457,26 +533,28 @@ app.post('/api/run', wrap(async (req, res) => {
       targetIds: nodeIds,
       configs,
       emitter,
+      onTask,
+      freshNodeIds,
     });
-    const runId = uid('run');
-    q.run('INSERT INTO run_log (id, canvas_id, status, steps_json, error, create_time) VALUES (?,?,?,?,?,?)',
-      runId, canvasId || null, result.status, JSON.stringify(result.steps), result.error || null, now());
-    for (const p of result.patches) {
-      if (!p.data?.imageUrl) continue;
-      q.run('INSERT INTO asset (id, canvas_id, node_id, file_path, media_type, prompt, model, create_time) VALUES (?,?,?,?,?,?,?,?)',
-        uid('as'), canvasId || null, p.nodeId, p.data.imageUrl, 'image',
-        p.data.promptUsed || '', p.data.modelUsed || '', now());
-    }
+    recordCanvasAssets({ canvasId, scriptId, nodes: canvas.nodes, patches: result.patches });
+    q.run('UPDATE run_log SET status = ?, steps_json = ?, error = ? WHERE id = ?',
+      result.status, JSON.stringify(result.steps), result.error || null, runId);
     send('done', { runId, ms: Date.now() - startedAt, status: result.status, error: result.error,
                    totalNodes: result.totalNodes, stages: result.stages, errors: result.errors });
   } catch (e) {
+    q.run('UPDATE run_log SET status = ?, error = ? WHERE id = ?', 'failed', e.message, runId);
     send('fatal', { message: e.message });
   }
+  clearInterval(heartbeat);
   try { res.end(); } catch { /* ignore */ }
 }));
 
-app.get('/api/runs', wrap((req, res) => ok(res,
-  q.all('SELECT id, canvas_id, status, error, create_time FROM run_log ORDER BY create_time DESC LIMIT 30'))));
+app.get('/api/runs', wrap((req, res) => {
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 30));
+  ok(res, q.all(`SELECT r.id, r.canvas_id, c.title AS canvas_title, r.status, r.error, r.create_time
+    FROM run_log r LEFT JOIN canvas c ON c.id = r.canvas_id
+    ORDER BY r.create_time DESC LIMIT ?`, limit));
+}));
 
 /* ---------------- 生成产物 ---------------- */
 app.get('/api/assets', wrap((req, res) => ok(res,
@@ -869,25 +947,27 @@ app.get('/api/jobs/:id', wrap((req, res) => {
   if (!job) return fail(res, '任务不存在', 404);
   ok(res, job);
 }));
-app.get('/api/jobs', wrap((req, res) => ok(res, pipeline.listJobs())));
+app.get('/api/jobs', wrap((req, res) => ok(res, pipeline.listJobs({ limit: req.query.limit }))));
 
 /* ---------------- 模型清单（供下拉选择） ----------------
    支持 ?purpose=thinking|image_gen|video 或 ?providerId= / ?customApiId= 指定来源 */
 let modelCache = new Map();
 app.get('/api/models', wrap(async (req, res) => {
   const purpose = req.query.purpose || 'thinking';
-  const selectedProvider = req.query.providerId ? q.one('SELECT id, name, protocol, models_json FROM provider WHERE id = ?', req.query.providerId) : null;
-  const storedModels = (() => { try { const value = JSON.parse(selectedProvider?.models_json || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } })();
+  const selectedProvider = req.query.providerId
+    ? q.one('SELECT id, name, protocol, models_json FROM provider WHERE id = ?', req.query.providerId)
+    : q.one('SELECT p.id, p.name, p.protocol, p.models_json FROM provider p JOIN ai_config c ON c.provider_id = p.id WHERE c.purpose = ?', purpose);
 
   let target;
+  let resolveError;
   try { target = ai.resolveTarget(purpose, {}, (() => { const o = {}; if (req.query.providerId) o.providerId = req.query.providerId; if (req.query.customApiId) o.customApiId = req.query.customApiId; if (req.query.base_url) o.baseURL = req.query.base_url; if (req.query.api_key) o.apiKey = req.query.api_key; return o; })()); }
-  catch (e) { return ok(res, { list: [], error: e.message }); }
+  catch (e) { if (!selectedProvider) return ok(res, { list: [], error: e.message }); resolveError = e; }
 
-  const fallbackProvider = selectedProvider || target.provider || null;
+  const fallbackProvider = selectedProvider || target?.provider || null;
   const localModelsResponse = (error = null) => {
     const records = portableModels(fallbackProvider?.models_json || '[]');
     // 始终把当前配置的模型放进列表，保证节点有可选项
-    if (target.model && !records.some((r) => r.id === target.model)) records.push({ id: target.model, name: target.model });
+    if (target?.model && !records.some((r) => r.id === target.model)) records.push({ id: target.model, name: target.model });
     const list = records.map((model) => model.id);
     return {
       list,
@@ -908,6 +988,8 @@ app.get('/api/models', wrap(async (req, res) => {
       ...(error ? { error } : {}),
     };
   };
+
+  if (!target) return ok(res, localModelsResponse(resolveError.message));
 
   if (target.custom) {
     const models = q.all('SELECT models_json FROM provider WHERE 1=0');
@@ -949,7 +1031,10 @@ app.get('/api/models', wrap(async (req, res) => {
     };
   };
 
-  const cacheKey = `${target.baseURL}|${target.apiKey.slice(-6)}`;
+  const cacheKey = JSON.stringify([
+    purpose, target.provider?.id || null, target.baseURL, sha256(target.apiKey),
+    target.model, target.provider?.models_json || '',
+  ]);
   const cached = modelCache.get(cacheKey);
   if (cached && Date.now() - cached.at < 60000 && cached.list.length) return ok(res, decorate(cached.list, cached.models));
 
@@ -1149,10 +1234,22 @@ app.post('/api/upload/batch', wrap((req, res) => {
 }));
 
 /* ---------------- 媒体库 ---------------- */
-app.get('/api/media', wrap((req, res) => ok(res,
-  req.query.scriptId
-    ? q.all('SELECT * FROM media_asset WHERE script_id = ? ORDER BY create_time DESC', req.query.scriptId)
-    : q.all('SELECT * FROM media_asset ORDER BY create_time DESC LIMIT 100'))));
+app.get('/api/media', wrap((req, res) => {
+  const scriptId = req.query.scriptId || null;
+  const projectMedia = scriptId
+    ? q.all('SELECT * FROM media_asset WHERE script_id = ? ORDER BY create_time DESC', scriptId)
+    : q.all('SELECT * FROM media_asset ORDER BY create_time DESC LIMIT 100');
+  const canvasVideos = scriptId
+    ? q.all(`SELECT id, script_id, NULL AS shot_id, media_type AS kind, file_path,
+        NULL AS duration, prompt, model, NULL AS meta_json, create_time
+        FROM asset WHERE media_type = 'video' AND script_id = ? ORDER BY create_time DESC`, scriptId)
+    : q.all(`SELECT id, script_id, NULL AS shot_id, media_type AS kind, file_path,
+        NULL AS duration, prompt, model, NULL AS meta_json, create_time
+        FROM asset WHERE media_type = 'video' ORDER BY create_time DESC LIMIT 100`);
+  const combined = [...projectMedia, ...canvasVideos]
+    .sort((a, b) => String(b.create_time).localeCompare(String(a.create_time)));
+  ok(res, scriptId ? combined : combined.slice(0, 100));
+}));
 
 /* ---------------- 错误文件上传（本地图片先落盘，供节点引用） ---------------- */
 app.post('/api/upload', wrap((req, res) => {
@@ -1250,12 +1347,103 @@ if (fs.existsSync(distDir)) {
 
 app.get('/api/health', (req, res) => res.json({ success: true, data: { status: 'ok', dataDir: DATA_DIR } }));
 
+/* ---------------- 豆包号池桥接（doubao-bridge） ----------------
+   桥接是独立进程，这里只做生命周期管理 + HTTP 代理，不侵入主逻辑。 */
+app.get('/api/doubao/status', wrap(async (req, res) => {
+  const st = await doubaoBridge.status();
+  const pv = findDoubaoProvider();
+  ok(res, {
+    ...st,
+    models: doubaoBridge.bridgeModelDetails(st.dir),
+    provider: pv ? {
+      id: pv.id, name: pv.name, protocol: pv.protocol,
+      baseUrl: pv.base_url, hasKey: !!String(pv.api_key || '').trim(), enabled: !!pv.enabled,
+    } : null,
+    providerName: DOUBAO_PROVIDER_NAME,
+    expectedBaseUrl: `${doubaoBridge.bridgeBaseUrl(st.dir)}/v1`,
+  });
+}));
+
+const bridgeActionResult = (res, result) => result.ok
+  ? ok(res, result)
+  : fail(res, result.error || '桥接操作失败', 409);
+app.post('/api/doubao/start', wrap(async (req, res) => bridgeActionResult(res, await doubaoBridge.start())));
+app.post('/api/doubao/stop', wrap(async (req, res) => bridgeActionResult(res, await doubaoBridge.stop())));
+app.post('/api/doubao/restart', wrap(async (req, res) => bridgeActionResult(res, await doubaoBridge.restart())));
+app.get('/api/doubao/logs', wrap((req, res) => ok(res, doubaoBridge.recentLogs())));
+
+app.put('/api/doubao/settings', wrap((req, res) => {
+  const b = req.body || {};
+  if (b.dir !== undefined) doubaoBridge.setBridgeDir(b.dir);
+  if (b.auto !== undefined) doubaoBridge.setAutoStart(b.auto);
+  const dir = doubaoBridge.resolveBridgeDir();
+  // 桥接地址/模型清单可能变了 → 同步修回预置供应商
+  ensureDoubaoProvider(`${doubaoBridge.bridgeBaseUrl(dir)}/v1`, doubaoBridge.bridgeModels(dir));
+  ok(res, { dir, auto: doubaoBridge.getAutoStart(), baseUrl: `${doubaoBridge.bridgeBaseUrl(dir)}/v1` });
+}));
+
+/* 账号池：纯代理，前端不直连桥接端口（避免 CORS 与端口暴露） */
+app.get('/api/doubao/accounts', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/accounts', {}, 15000))));
+
+app.post('/api/doubao/accounts', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/accounts', { method: 'POST', body: JSON.stringify(req.body || {}) }, 25000))));
+
+app.put('/api/doubao/accounts/:id', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch(`/v1/accounts/${req.params.id}`, { method: 'PUT', body: JSON.stringify(req.body || {}) }, 25000))));
+
+app.delete('/api/doubao/accounts/:id', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch(`/v1/accounts/${req.params.id}`, { method: 'DELETE' }, 25000))));
+
+// probe 会真的启动该账号的浏览器，给足超时
+for (const action of ['probe', 'cooldown', 'recover']) {
+  app.post(`/api/doubao/accounts/:id/${action}`, wrap(async (req, res) =>
+    ok(res, await doubaoBridge.bridgeFetch(
+      `/v1/accounts/${req.params.id}/${action}`,
+      { method: 'POST', body: JSON.stringify(req.body || {}) },
+      action === 'probe' ? 300000 : 25000,
+    ))));
+}
+
+app.get('/api/doubao/tasks', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/tasks', {}, 15000))));
+
+app.post('/api/doubao/pool/reset', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/pool/reset', { method: 'POST' }, 25000))));
+
+/* 手动切换账号：锁定到某个账号（不再自动轮询）/ 解除锁定 */
+app.post('/api/doubao/accounts/:id/pin', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/pool/pin',
+    { method: 'POST', body: JSON.stringify({ accountId: req.params.id }) }, 25000))));
+
+app.delete('/api/doubao/pool/pin', wrap(async (req, res) =>
+  ok(res, await doubaoBridge.bridgeFetch('/v1/pool/pin', { method: 'POST', body: '{}' }, 25000))));
+
+/* 让「豆包（网页版号池）」直接作为视频用途的来源（一键把 video 用途切到它） */
+app.post('/api/doubao/use-for-video', wrap((req, res) => {
+  const pv = findDoubaoProvider();
+  if (!pv) return fail(res, '预置供应商尚未注册，请先启动一次桥接');
+  // 默认用桥接声明的便宜模型；Seedance 2.5 是 5 倍消耗，不做默认
+  const model = String(req.body?.model || doubaoBridge.bridgeDefaultModel() || 'doubao-seedance-2-0-fast');
+  q.run(`UPDATE ai_config SET provider_id = ?, custom_api_id = NULL, base_url = ?, api_key = ?, model_id = ?, update_time = ? WHERE purpose = 'video'`,
+    pv.id, pv.base_url, 'local', model, now());
+  ok(res, { providerId: pv.id, providerName: pv.name, model, protocol: pv.protocol });
+}));
+
 export function startServer({ port = PORT, host = '127.0.0.1' } = {}) {
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
       const actual = server.address().port;
       console.log(`WeaveCanvas server → http://${host}:${actual}`);
       console.log(`数据目录: ${DATA_DIR}`);
+      // 豆包号池桥接：开机自启（异步，不阻塞主流程；失败只记日志不影响软件可用）
+      doubaoBridge.autoStart()
+        .then((r) => {
+          if (r?.ok && !r.already) console.log(`豆包号池桥接已启动 → ${r.baseUrl}`);
+          else if (r?.skipped) console.log(`豆包号池桥接未自启：${r.skipped}`);
+          else if (r?.error) console.warn(`豆包号池桥接自启失败：${r.error}`);
+        })
+        .catch((e) => console.warn('[doubao] 桥接自启异常：', e.message));
       resolve({ server, port: actual, url: `http://${host}:${actual}` });
     });
     server.on('error', (err) => {
@@ -1267,8 +1455,18 @@ export function startServer({ port = PORT, host = '127.0.0.1' } = {}) {
   });
 }
 
-export { app, DATA_DIR };
+export { app, DATA_DIR, doubaoBridge };
 
 // 直接用 node 运行时自动启动（被 Electron 引入时不自动启动）
 const isDirect = process.argv[1] && path.resolve(process.argv[1]).endsWith(path.join('server', 'index.js'));
-if (isDirect) startServer().catch((e) => { console.error('启动失败:', e.message); process.exit(1); });
+if (isDirect) {
+  startServer().catch((e) => { console.error('启动失败:', e.message); process.exit(1); });
+  // 退出时收掉桥接进程（账号浏览器实例不受影响，下次直接复用）
+  const bye = () => {
+    try { doubaoBridge.stop(); } catch { /* ignore */ }
+    // 给「请求孤儿桥接自我关闭」留一点时间再退出
+    setTimeout(() => process.exit(0), 1500);
+  };
+  process.on('SIGINT', bye);
+  process.on('SIGTERM', bye);
+}

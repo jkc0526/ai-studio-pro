@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const settings = fs.readFileSync(new URL('../src/components/SettingsModal.jsx', import.meta.url), 'utf8');
+const configImport = fs.readFileSync(new URL('../src/configImport.js', import.meta.url), 'utf8');
 const styles = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
 assert.match(settings, /模型中心/, 'settings should present a dedicated model center');
@@ -18,8 +19,8 @@ assert.match(settings, /导出配置/, 'settings should offer configuration expo
 assert.match(settings, /最近 3 次更新内容/, 'settings should show the three most recent release notes');
 assert.match(settings, /update-release-list/, 'release notes should be rendered as a readable list');
 assert.match(settings, /发现新版本/, 'the update panel should tell users when a new version is available');
-assert.match(settings, /safeConfig = \{/, 'imports must be rebuilt from an allowlist before leaving the renderer');
-assert.match(settings, /safeBaseUrl/, 'credential-like URL query strings must not be sent during import');
+assert.match(configImport, /safeConfig = \{/, 'imports must be rebuilt from an allowlist before leaving the renderer');
+assert.match(configImport, /safeBaseUrl/, 'credential-like URL query strings must not be sent during import');
 assert.match(settings, /API Key 未导入/, 'the UI should explain that credentials need to be added separately');
 assert.match(styles, /\.model-center-banner/, 'model center should have a distinct onboarding banner');
 assert.match(styles, /\.model-purpose-tabs/, 'model categories should have a dedicated tab treatment');

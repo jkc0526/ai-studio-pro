@@ -331,8 +331,9 @@ export function getJob(id) {
   return row ? { ...row, log: JSON.parse(row.log_json || '[]') } : null;
 }
 
-export function listJobs() {
-  return q.all('SELECT * FROM job ORDER BY create_time DESC LIMIT 20')
+export function listJobs({ limit = 20 } = {}) {
+  const count = Math.min(500, Math.max(1, Number(limit) || 20));
+  return q.all('SELECT * FROM job ORDER BY create_time DESC LIMIT ?', count)
     .map((r) => ({ ...r, log: JSON.parse(r.log_json || '[]') }));
 }
 

@@ -45,7 +45,7 @@ export const NODE_MENU = [
       { type: 'noteNode', label: '便签', icon: I.note },
       { type: 'scriptNode', label: '分镜脚本', icon: I.script },
       { type: 'composeNode', label: '视频合成', icon: I.compose },
-      { type: 'directorNode', label: '3D导演台', icon: I.director },
+      { type: 'directorNode', label: '运镜提示', desc: '整理运镜文字供视频节点引用', icon: I.director },
     ],
   },
   {

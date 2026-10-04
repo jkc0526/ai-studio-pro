@@ -152,6 +152,8 @@ export default function VideoNode({ id, data, selected }) {
   const refs = useMemo(() => ctx.refsOf?.(id, { nodes: graphNodes, edges: graphEdges }) || [],
     [ctx, id, graphNodes, graphEdges]);
   const prompt = data.prompt || '';
+  const pendingTask = data.upstreamTask?.status === 'accepted'
+    && (data.upstreamTask.id || data.upstreamTask.resultUrl);
   const usedKeys = useMemo(() => (prompt.match(/@\s*(?:图片|视频)\s*\d+/g) || []).map((s) => s.replace(/@\s*/, '').replace(/\s+/g, '')), [prompt]);
 
   // 素材编号表同步给节点数据 → 后端按同样的 key 解析 @图片N
@@ -162,7 +164,8 @@ export default function VideoNode({ id, data, selected }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(refs)]);
 
-  const gen = () => {
+  const gen = (fresh = false) => {
+    if (pendingTask && !fresh) { ctx.runNode(id); return; }
     if (providerId && !models.some((model) => modelIdOf(model) === data.modelId)) {
       ctx.updateNode(id, { status: 'error', error: '请先从所选供应商的模型列表中选择一个视频模型' });
       return;
@@ -172,7 +175,7 @@ export default function VideoNode({ id, data, selected }) {
       return;
     }
     ctx.updateNode(id, { needsImage: modeCfg.needImage });
-    ctx.runNode(id);
+    ctx.runNode(id, { fresh });
   };
 
   const cycle = (list, cur) => list[(list.indexOf(cur) + 1) % list.length];
@@ -211,12 +214,14 @@ export default function VideoNode({ id, data, selected }) {
           <path d="M3 7h11v10H3zM14 10l6-3v10l-6-3" />
         </svg>
         {data.label || '视频'}
-        {data.status && <span className={`oii-badge ${data.status}`}>{STATUS_TEXT[data.status] || data.status}</span>}
+        {data.status && <span className={`oii-badge ${data.status}`}>{data.status === 'running'
+          ? ({ poll: '查询进度', download: '下载中' })[data.generationPhase] || STATUS_TEXT.running
+          : data.status === 'error' && pendingTask ? '待获取' : STATUS_TEXT[data.status] || data.status}</span>}
       </div>
 
       <div className={`oii-card ${data.videoUrl ? 'has-media' : ''}`} aria-busy={data.status === 'running'}>
         {data.videoUrl ? (
-          <video src={data.videoUrl} controls muted loop playsInline className="nodrag" />
+          <video src={data.videoUrl} controls muted loop playsInline />
         ) : data.status !== 'running' ? (
           <span className="oii-ph">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.4">
@@ -233,6 +238,12 @@ export default function VideoNode({ id, data, selected }) {
       {data.status === 'error' && <ErrorSummary error={data.error} className="oii-err" />}
 
       <div className="oii-prompt">
+        {pendingTask && <div className="oii-params nodrag" aria-live="polite">
+          <span className="oii-hint" title={data.upstreamTask.id || ''}>原任务已接单 · {data.upstreamTask.model || data.modelId}</span>
+          <span className="oii-spacer" />
+          <button className="oii-mini" disabled={data.status === 'running'} onClick={() => gen(false)}>继续获取视频</button>
+          <button className="oii-mini" disabled={data.status === 'running'} onClick={() => gen(true)} title="放弃继续查询，创建一个新的生成任务">重新生成</button>
+        </div>}
         {/* 模式 tab */}
         <div className="oii-tabs nodrag">
           {MODES.map((m) => (
@@ -270,7 +281,7 @@ export default function VideoNode({ id, data, selected }) {
           rows={3}
           placeholder={PLACEHOLDER[mode]}
           onPreview={(ref) => setPreview(ref)}
-          onSubmit={gen}
+          onSubmit={() => gen(false)}
         />
 
         <div className="oii-params">
@@ -355,8 +366,8 @@ export default function VideoNode({ id, data, selected }) {
           <span className="oii-spacer" />
           {videoPrice && <span className="oii-video-price" aria-live="polite" aria-label={`模型价格 ${videoPrice}`} title={`模型价格：${videoPrice}`}>{videoPrice}</span>}
           <button className="nodrag oii-mini" title="1x">1x</button>
-          <button className="nodrag oii-send" disabled={data.status === 'running' || modelsLoading || (!!providerId && !data.modelId)} onClick={gen}
-            title={modelsError || (providerId && !models.length && !modelsLoading ? '供应商没有返回可识别的视频模型' : '生成视频')}>
+          <button className="nodrag oii-send" disabled={data.status === 'running' || (!pendingTask && (modelsLoading || (!!providerId && !data.modelId)))} onClick={() => gen(false)}
+            title={pendingTask ? '继续获取视频（查询原任务）' : modelsError || (providerId && !models.length && !modelsLoading ? '供应商没有返回可识别的视频模型' : '生成视频')}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M12 19V5M6 11l6-6 6 6" />
             </svg>

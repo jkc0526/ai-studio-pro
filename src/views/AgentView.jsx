@@ -202,6 +202,15 @@ export default function AgentView() {
     let stale = false;
     (async () => {
       try {
+        if (agentDraft?.runId) {
+          if (agentDraft.scriptId && agentDraft.scriptId !== scriptId) {
+            selectScript(agentDraft.scriptId);
+            return;
+          }
+          await openRun(agentDraft.runId);
+          clearAgentDraft?.();
+          return;
+        }
         const list = await api.listAgentRuns(scriptId);
         if (stale) return;
         if (list[0]) await openRun(list[0].id);
@@ -209,7 +218,7 @@ export default function AgentView() {
     })();
     return () => { stale = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scriptId]);
+  }, [scriptId, agentDraft?.runId]);
 
   // 卸载时关闭事件流
   useEffect(() => () => { closeRef.current?.(); }, []);

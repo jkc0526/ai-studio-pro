@@ -537,9 +537,10 @@ export function runDetail(runId) {
 }
 
 export function listRuns({ scriptId, limit = 20 } = {}) {
+  const count = Math.min(500, Math.max(1, Number(limit) || 20));
   return (scriptId
-    ? q.all('SELECT * FROM agent_run WHERE script_id = ? ORDER BY create_time DESC LIMIT ?', scriptId, Number(limit))
-    : q.all('SELECT * FROM agent_run ORDER BY create_time DESC LIMIT ?', Number(limit))
+    ? q.all('SELECT * FROM agent_run WHERE script_id = ? ORDER BY create_time DESC LIMIT ?', scriptId, count)
+    : q.all('SELECT * FROM agent_run ORDER BY create_time DESC LIMIT ?', count)
   ).map((r) => ({ ...r, cost: JSON.parse(r.cost_json || '{}') }));
 }
 

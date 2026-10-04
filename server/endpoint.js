@@ -164,7 +164,65 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
     const seconds = hasSeconds
       ? String(Number.isFinite(secondsValue) ? Math.min(12, Math.max(4, Math.round(secondsValue))) : 5)
       : undefined;
-    const body = { model, prompt: vars.prompt, mode: vars.mode };
+    // Agnes v2.0 uses its legacy field layout; newer Agnes models keep the
+    // normalized reference/keyframe fields below.
+    const agnesV20 = /^agnes-video-v?2[._-]0(?:$|[-_.])/i.test(String(model || ''));
+    if (agnesV20) {
+      const durationSeconds = seconds === undefined ? 5 : Number(seconds);
+      const frameRate = 24;
+      const numFrames = Math.min(441, Math.max(4, durationSeconds)) * frameRate + 1;
+      const ratioParts = String(vars.ratio || '16:9').split(':').map(Number);
+      const ratioWidth = Number.isFinite(ratioParts[0]) && ratioParts[0] > 0 ? ratioParts[0] : 16;
+      const ratioHeight = Number.isFinite(ratioParts[1]) && ratioParts[1] > 0 ? ratioParts[1] : 9;
+      const sizeKey = String(vars.size || '720P').toUpperCase().replace(/\s+/g, '');
+      const longEdge = ({ '480P': 854, '720P': 1280, '960P': 1706, '1080P': 1920, '2K': 2048 })[sizeKey] || 1280;
+      const maxRatio = Math.max(ratioWidth, ratioHeight);
+      const toMultipleOfEight = (n) => Math.max(8, Math.round(n / 8) * 8);
+      const width = toMultipleOfEight(longEdge * ratioWidth / maxRatio);
+      const height = toMultipleOfEight(longEdge * ratioHeight / maxRatio);
+      const body = { model, prompt: vars.prompt, width, height, num_frames: numFrames, frame_rate: frameRate };
+      if (vars.mode === 'text') {
+        body.mode = 'ti2vid';
+      } else if (vars.mode === 'reference') {
+        body.mode = 'multi_reference';
+        if (Array.isArray(vars.images) && vars.images.length) {
+          body.extra_body = { image: vars.images };
+        }
+        if (Array.isArray(vars.audios) && vars.audios.length) body.audios = vars.audios;
+      } else if (vars.mode === 'keyframe' && vars.firstFrame && vars.lastFrame) {
+        body.mode = 'keyframes';
+        body.extra_body = { image: [vars.firstFrame, vars.lastFrame], mode: 'keyframes' };
+      } else if (vars.mode === 'keyframe' && vars.firstFrame) {
+        // Agnes v2.0 的单图生视频使用 singular top-level `image`，不使用 keyframe alias。
+        body.image = vars.firstFrame;
+      }
+      return {
+        method: 'POST',
+        url: `${base}/videos`,
+        body,
+        queueFullRetryDelays: [10_000, 20_000, 40_000],
+        referenceImageEncoding: 'base64',
+        resultType: 'url',
+        idKeys: ['video_id', 'id', 'task_id'],
+        poll: {
+          url: `${pollOrigin}/agnesapi?video_id={{id}}&model_name=${encodeURIComponent(model || '')}`,
+          interval: 1500, max: 240,
+          statusPath: 'status',
+          doneValues: ['completed', 'succeeded', 'success', 'done'],
+          failValues: ['failed', 'error', 'canceled', 'cancelled'],
+          resultPath: 'url',
+          resultPaths: [
+            'url', 'metadata.url', 'metadata.video_url', 'metadata.videoUrl',
+            'video_url', 'videoUrl', 'remixed_from_video_id', 'output_url',
+            'output.url', 'output.video_url', 'result.url', 'result.video_url',
+            'data.url', 'data.video_url', 'data.output.url',
+          ],
+          resultGracePolls: 5,
+        },
+      };
+    }
+    const wireMode = vars.mode;
+    const body = { model, prompt: vars.prompt, mode: wireMode };
     if (seconds !== undefined) body.seconds = seconds;
     if (vars.ratio) body.aspect_ratio = vars.ratio;
     if (vars.mode === 'reference') {
@@ -205,12 +263,16 @@ export function builtinSpec({ kind, protocol = 'openai', baseURL, model, vars })
       && ['text', 'reference', 'keyframe'].includes(vars.mode);
     const seedanceDuration = /seedance[\s._-]*2[\s._-]*[05]/i.test(String(model || ''))
       ? Number(vars.seconds ?? vars.duration) : null;
+    // openai-video 走「旧版单图格式」：只发一个 image 字段。
+    // 画布 VideoNode 的图生视频传的是 firstFrame（不是 image），必须在这里兜底，
+    // 否则首帧图会被静默丢掉 —— 表现为"只传了文字、图没过去"。
+    const legacyImage = vars.image || vars.firstFrame;
     return {
       method: 'POST',
       url: `${base}/video/generations`,
       body: {
         model, prompt: vars.prompt,
-        ...(!supportedMode && vars.image ? { image: vars.image } : {}),
+        ...(!supportedMode && legacyImage ? { image: legacyImage } : {}),
         ...(supportedMode ? { mode: vars.mode } : {}),
         ...(supportedMode && seedanceDuration === null && vars.seconds !== undefined && vars.seconds !== null && vars.seconds !== ''
           ? { seconds: String(vars.seconds) } : {}),
@@ -367,7 +429,35 @@ function imageEditFormData(body = {}) {
   return form;
 }
 
-async function fetchJson(url, { method = 'POST', headers = {}, body, apiKey, timeout = 600000 }) {
+const NO_CONNECTION_CODES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH']);
+
+function networkFailure(cause, { phase, url, taskId }) {
+  const code = [cause?.cause?.code, cause?.code, cause?.cause?.errors?.[0]?.code]
+    .find((value) => typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,47}$/.test(value))
+    || (cause?.name === 'AbortError' || cause?.name === 'TimeoutError' ? 'ETIMEDOUT' : 'NETWORK_ERROR');
+  let host = '';
+  try { host = new URL(url).hostname; } catch { /* no credentials or query in diagnostics */ }
+  const label = { submit: '提交生成请求失败', poll: '查询生成进度失败', download: '下载生成结果失败' }[phase] || '网络请求失败';
+  const reason = /TIMEOUT|TIMEDOUT/.test(code) ? '连接超时'
+    : /ENOTFOUND|EAI_AGAIN/.test(code) ? '域名解析失败'
+    : /CERT|TLS|SSL/.test(code) ? '安全连接校验失败' : '连接中断';
+  const hint = taskId ? `任务号 ${taskId}；可继续获取原任务结果。`
+    : phase === 'submit' ? NO_CONNECTION_CODES.has(code) ? '连接未建立，尚未收到接单回执。'
+      : '尚未收到接单回执，请先核对供应商任务记录。' : '';
+  return Object.assign(new Error(`${label}：${reason}（${host}；${code}）。${hint}`, { cause }),
+    { code: 'UPSTREAM_NETWORK_ERROR', networkCode: code, phase, taskId });
+}
+
+async function retryRead(fn, delays = [500, 1500]) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); } catch (error) {
+      if (error.code !== 'UPSTREAM_NETWORK_ERROR' || attempt >= delays.length) throw error;
+      await sleep(delays[attempt]);
+    }
+  }
+}
+
+async function fetchJson(url, { method = 'POST', headers = {}, body, apiKey, timeout = 600000, phase = 'submit', taskId } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
@@ -386,6 +476,8 @@ async function fetchJson(url, { method = 'POST', headers = {}, body, apiKey, tim
     let json = null;
     try { json = JSON.parse(text); } catch { /* ignore */ }
     return { ok: res.ok, status: res.status, json, text };
+  } catch (error) {
+    throw networkFailure(error, { phase, url, taskId });
   } finally { clearTimeout(timer); }
 }
 
@@ -411,7 +503,7 @@ async function saveBinary(buf, ext) {
   return `/outputs/${name}`;
 }
 
-async function materialize(value, kind) {
+async function materialize(value, kind, { taskId, retryDelays } = {}) {
   if (!value) return null;
   if (typeof value === 'string') {
     if (value.startsWith('data:')) {
@@ -425,10 +517,19 @@ async function materialize(value, kind) {
       return saveBinary(Buffer.from(value, 'base64'), ext);
     }
     if (/^https?:\/\//i.test(value)) {
-      const res = await fetch(value);
-      if (!res.ok) throw new Error(`下载产物失败 HTTP ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
-      const ct = res.headers.get('content-type') || '';
+      const { buf, ct } = await retryRead(async () => {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 60000);
+        try {
+          let res; let buf;
+          try {
+            res = await fetch(value, { signal: ctrl.signal });
+            if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+          } catch (error) { throw networkFailure(error, { phase: 'download', url: value, taskId }); }
+          if (!res.ok) throw Object.assign(new Error(`下载产物失败 HTTP ${res.status}${taskId ? `（任务号 ${taskId}）` : ''}`), { phase: 'download', taskId });
+          return { buf, ct: res.headers.get('content-type') || '' };
+        } finally { clearTimeout(timer); }
+      }, retryDelays);
       const ext = ct.includes('video') || /\.mp4/i.test(value) ? 'mp4'
         : ct.includes('png') ? 'png' : ct.includes('jpeg') ? 'jpg' : ct.includes('webp') ? 'webp' : 'bin';
       return saveBinary(buf, ext);
@@ -442,16 +543,31 @@ async function materialize(value, kind) {
  * 统一执行一次调用
  * @returns {{kind:'text'|'media', text?:string, url?:string|null, raw:object, polls:number}}
  */
-export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueFull = retry429 }) {
-  const encodedBody = kind === 'image' || kind === 'video'
+export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueFull = retry429,
+  resumeTask, onTask, taskContext = {} }) {
+  const resuming = kind === 'video' && resumeTask?.status === 'accepted'
+    && (resumeTask.id || resumeTask.resultUrl);
+  const encodedBody = resuming ? undefined : kind === 'image' || kind === 'video'
     ? await encodeLocalImageReferences(spec.body, spec.referenceImageEncoding || 'data-uri', { bytes: 0 })
     : spec.body;
-  const body = spec.bodyFormat === 'multipart-image-edit' ? imageEditFormData(encodedBody) : encodedBody;
+  const body = !resuming && spec.bodyFormat === 'multipart-image-edit' ? imageEditFormData(encodedBody) : encodedBody;
   let rateLimitRetries = 0;
   let queueFullRetries = 0;
-  let res;
-  while (true) {
-    res = await fetchJson(spec.url, { method: spec.method, headers: spec.headers, body, apiKey });
+  let connectRetries = 0;
+  const connectDelays = spec.connectRetryDelays || [1000, 2500];
+  let res = { json: {} };
+  while (!resuming) {
+    try {
+      res = await fetchJson(spec.url, { method: spec.method, headers: spec.headers, body, apiKey });
+    } catch (error) {
+      // Only retry when the socket never connected. A reset after sending may already be a paid task.
+      if (error.code === 'UPSTREAM_NETWORK_ERROR' && NO_CONNECTION_CODES.has(error.networkCode)
+        && connectRetries < connectDelays.length) {
+        await sleep(connectDelays[connectRetries++]);
+        continue;
+      }
+      throw error;
+    }
     if (res.ok) break;
     if (res.status === 429 && retry429 && rateLimitRetries < 3) {
       await sleep([8000, 20000, 40000][rateLimitRetries]);
@@ -465,7 +581,7 @@ export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueF
         continue;
       }
       const retried = queueFullRetries ? `已自动重试 ${queueFullRetries} 次，` : '';
-      const error = new Error(`Agnes 视频队列已满，${retried}上游仍未接单；请稍后重试或切换视频模型。${describeHttpError(res)}`);
+      const error = new Error(`视频队列已满，${retried}上游仍未接单；请稍后重试或切换视频模型。${describeHttpError(res)}`);
       error.code = 'UPSTREAM_VIDEO_QUEUE_FULL';
       throw error;
     }
@@ -473,6 +589,19 @@ export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueF
   }
 
   const json = res.json || {};
+
+  let task = resuming ? { ...resumeTask } : { ...taskContext, acceptedAt: new Date().toISOString() };
+  const reportTask = async (update) => {
+    task = { ...task, ...update, updatedAt: new Date().toISOString() };
+    if (kind === 'video') await onTask?.({ ...task });
+  };
+  const materializeResult = async (value, id) => {
+    if (kind === 'video') await reportTask({ id: id || null, status: 'accepted', phase: 'download',
+      resultUrl: typeof value === 'string' && /^https?:\/\//i.test(value) ? value : undefined });
+    const url = await materialize(value, kind, { taskId: id, retryDelays: spec.networkRetryDelays });
+    if (kind === 'video') await reportTask({ status: 'completed', phase: 'done', localUrl: url });
+    return url;
+  };
 
   if (kind === 'text') {
     const text = (spec.textPath ? pick(json, spec.textPath) : null) || digText(json);
@@ -492,21 +621,22 @@ export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueF
   }
 
   // 图像 / 视频
-  let value = spec.responsePath ? pick(json, spec.responsePath) : null;
+  const id = resuming ? resumeTask.id : spec.idKeys ? digFirstKey(json, spec.idKeys) : digAnyId(json);
+  let value = resuming ? (!id ? resumeTask.resultUrl : null) : spec.responsePath ? pick(json, spec.responsePath) : null;
   if (!value) value = digAnyUrl(json) || digAnyB64(json);
   if (!value && spec.resultType === 'b64') value = digAnyB64(json);
   if (value) {
-    const url = await materialize(value, kind);
+    const url = await materializeResult(value, id);
     if (url && !url.startsWith('/outputs/')) return { kind: 'media', url, raw: json, polls: 0, passthrough: url };
     return { kind: 'media', url, raw: json, polls: 0 };
   }
 
   // 异步任务：轮询
-  const id = spec.idKeys ? digFirstKey(json, spec.idKeys) : digAnyId(json);
   if (!spec.poll || !id) {
     throw new Error(`接口未返回可识别的结果（响应字段：${Object.keys(json).join(',')}）`);
   }
-  const urls = [spec.poll.url.replace('{{id}}', id), ...(spec.poll.extraUrls || []).map((u) => u.replace('{{id}}', id))];
+  await reportTask({ id, status: 'accepted', phase: 'poll' });
+  const urls = [spec.poll.url.replace('{{id}}', encodeURIComponent(id)), ...(spec.poll.extraUrls || []).map((u) => u.replace('{{id}}', encodeURIComponent(id)))];
   const deadline = Date.now() + spec.poll.interval * spec.poll.max;
   let polls = 0;
   let completedWithoutResultPolls = 0;
@@ -515,10 +645,12 @@ export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueF
     polls++;
     let completedWithoutResult = null;
     for (const u of urls) {
-      const st = await fetchJson(u, { method: 'GET', apiKey });
+      const st = await retryRead(() => fetchJson(u, { method: 'GET', apiKey, timeout: 20000, phase: 'poll', taskId: id }), spec.networkRetryDelays);
+      if (st.status === 401 || st.status === 403) throw Object.assign(new Error(`${describeHttpError(st)}（查询任务 ${id}）`), { phase: 'poll', taskId: id });
       if (!st.ok || !st.json) continue;
       const status = String(spec.poll.statusPath ? pick(st.json, spec.poll.statusPath) : '').toLowerCase();
       if (spec.poll.failValues.includes(status)) {
+        await reportTask({ status: 'failed', phase: 'done' });
         throw new Error(`任务失败：${pick(st.json, 'error.message') || pick(st.json, 'fail_reason') || status || '未知原因'}`);
       }
       const resultPaths = spec.poll.resultPaths?.length
@@ -528,7 +660,7 @@ export async function execute({ spec, apiKey, kind, retry429 = true, retryQueueF
         .find((value) => typeof value === 'string' && value.trim());
       const any = hit || digAnyUrl(st.json) || digAnyB64(st.json);
       if (any) {
-        const url = await materialize(any, kind);
+        const url = await materializeResult(any, id);
         return { kind: 'media', url, raw: st.json, polls, sourceUrl: typeof any === 'string' ? any : undefined };
       }
       if (spec.poll.doneValues.includes(status)) {

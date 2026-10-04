@@ -14,6 +14,7 @@ const json = async (url, opts = {}) => {
 export const api = {
   health: () => json('/api/health'),
   listCanvases: () => json('/api/canvases'),
+  listCanvasRuns: (limit) => json(`/api/runs${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
   getCanvas: (id) => json(`/api/canvases/${id}`),
   createCanvas: (body) => json('/api/canvases', { method: 'POST', body }),
   updateCanvas: (id, body) => json(`/api/canvases/${id}`, { method: 'PUT', body }),
@@ -107,8 +108,26 @@ export const api = {
   deleteCustomApi: (id) => json(`/api/custom-apis/${id}`, { method: 'DELETE' }),
   tryCustomApi: (id, body) => json(`/api/custom-apis/${id}/try`, { method: 'POST', body }),
 
+  // 豆包号池（本地 doubao-bridge 桥接）
+  doubaoStatus: () => json('/api/doubao/status'),
+  doubaoStart: () => json('/api/doubao/start', { method: 'POST' }),
+  doubaoStop: () => json('/api/doubao/stop', { method: 'POST' }),
+  doubaoRestart: () => json('/api/doubao/restart', { method: 'POST' }),
+  doubaoSettings: (body) => json('/api/doubao/settings', { method: 'PUT', body }),
+  doubaoAccounts: () => json('/api/doubao/accounts'),
+  doubaoAddAccount: (body) => json('/api/doubao/accounts', { method: 'POST', body }),
+  doubaoUpdateAccount: (id, body) => json(`/api/doubao/accounts/${id}`, { method: 'PUT', body }),
+  doubaoDeleteAccount: (id) => json(`/api/doubao/accounts/${id}`, { method: 'DELETE' }),
+  doubaoAccountAction: (id, action, body) => json(`/api/doubao/accounts/${id}/${action}`, { method: 'POST', body }),
+  doubaoTasks: () => json('/api/doubao/tasks'),
+  doubaoResetPool: () => json('/api/doubao/pool/reset', { method: 'POST' }),
+  doubaoPinAccount: (id) => json(`/api/doubao/accounts/${id}/pin`, { method: 'POST' }),
+  doubaoUnpinAccount: () => json('/api/doubao/pool/pin', { method: 'DELETE' }),
+  doubaoUseForVideo: (body) => json('/api/doubao/use-for-video', { method: 'POST', body }),
+
   // 任务
   getJob: (id) => json(`/api/jobs/${id}`),
+  listJobs: (limit) => json(`/api/jobs${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
 
   // Agent 应用（v0.6）
   listAgents: () => json('/api/agents'),
@@ -123,7 +142,12 @@ export const api = {
   applySkill: (id, body) => json(`/api/skills/${id}/apply`, { method: 'POST', body }),
   saveAgent: (body, id) => json(id ? `/api/agents/${id}` : '/api/agents', { method: id ? 'PUT' : 'POST', body }),
   deleteAgent: (id) => json(`/api/agents/${id}`, { method: 'DELETE' }),
-  listAgentRuns: (scriptId) => json(`/api/agent-runs${scriptId ? `?scriptId=${scriptId}` : ''}`),
+  listAgentRuns: (scriptId, limit) => {
+    const params = new URLSearchParams();
+    if (scriptId) params.set('scriptId', scriptId);
+    if (limit) params.set('limit', String(limit));
+    return json(`/api/agent-runs${params.toString() ? `?${params}` : ''}`);
+  },
   startAgentRun: (body) => json('/api/agent-runs', { method: 'POST', body }),
   getAgentRun: (id) => json(`/api/agent-runs/${id}`),
   resumeAgentRun: (id, body) => json(`/api/agent-runs/${id}/resume`, { method: 'POST', body }),

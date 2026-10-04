@@ -24,8 +24,8 @@ assert.match(html, /href="\/studio-icon\.svg"/, 'the browser tab should show the
 assert.match(main, /title:\s*'AI漫剧工作室'/, 'the Electron window title should use the requested name');
 assert.match(main, /icon:\s*path\.join\(APP_ROOT, 'dist', 'studio-icon\.ico'\)/,
   'the Electron window should show the packaged app icon');
-assert.match(main, /app\.setPath\('userData',\s*path\.join\(app\.getPath\('appData'\), 'WeaveCanvas'\)\)/,
-  'renaming the app must retain the existing WeaveCanvas user-data folder');
+assert.match(main, /app\.setPath\('userData',\s*resolveUserDataDirectory\(app\.getPath\('appData'\)\)\)/,
+  'renaming the app must reopen the original package-name user-data folder when it exists');
 assert.match(packager, /icon:\s*path\.join\(root, 'public', 'studio-icon\.ico'\)/,
   'the portable Windows build should use the same icon');
 assert.match(packager, /name:\s*'AI漫剧工作室'/,

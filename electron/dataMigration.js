@@ -1,6 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+export function resolveUserDataDirectory(appDataDirectory) {
+  const original = path.join(appDataDirectory, 'weave-canvas');
+  const renamed = path.join(appDataDirectory, 'WeaveCanvas');
+
+  // Electron originally used the package name for userData. Keep reopening that
+  // database after the product was renamed; do not overwrite either directory.
+  if (fs.existsSync(path.join(original, 'data', 'weave.db'))) return original;
+  if (fs.existsSync(path.join(renamed, 'data', 'weave.db'))) return renamed;
+  return original;
+}
+
 export function importLegacyDataDirectory(sourceDirectory, targetDirectory) {
   const source = path.resolve(sourceDirectory);
   const target = path.resolve(targetDirectory);

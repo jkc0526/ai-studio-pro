@@ -22,8 +22,10 @@ import DirectorNode from '../nodes/DirectorNode.jsx';
 import BatchUploadNode from '../nodes/BatchUploadNode.jsx';
 import SnippetsPanel from '../components/SnippetsPanel.jsx';
 import NodePalette from '../components/NodePalette.jsx';
+import CanvasAssistantPanel from '../components/CanvasAssistantPanel.jsx';
 import { getAutoConnectParams } from './canvasConnections.js';
 import { getAutoLayoutPositions } from './canvasLayout.js';
+import { createCanvasSaveQueue } from './canvasSaveQueue.js';
 
 const nodeTypes = {
   textNode: TextNode, llmNode: LlmNode, imageNode: ImageNode, noteNode: NoteNode,
@@ -50,7 +52,7 @@ const NODE_DEFAULTS = {
   audioNode: { label: '音频', text: '' },
   gridNode: { label: '分镜格子', prompt: '', count: 9, size: '1024x1024', images: [], status: null },
   composeNode: { label: '视频合成', ratio: '16:9', imageSeconds: 3, status: null },
-  directorNode: { label: '3D导演台', cameraShot: 'orbit', subject: '', space: '', output: '' },
+  directorNode: { label: '运镜提示', cameraShot: 'orbit', subject: '', space: '', output: '' },
   batchUploadNode: { label: '批量上传', items: [] },
 };
 
@@ -73,18 +75,6 @@ export function starterGraph() {
   };
 }
 
-function upstreamOf(id, edges) {
-  const seen = new Set([id]);
-  const stack = [id];
-  while (stack.length) {
-    const cur = stack.pop();
-    for (const e of edges) {
-      if (e.target === cur && !seen.has(e.source)) { seen.add(e.source); stack.push(e.source); }
-    }
-  }
-  return seen;
-}
-
 export default function CanvasView({ notify }) {
   const { modelGroups, modelDefaults, imageProviders, imageDefaultProvider, videoProviders, videoDefaultProvider, videoDefaultModel, videoModelCapabilities, videoModelPrices, setView, openProject, script } = useApp();
   const textDefaultModel = modelDefaults?.text || '';
@@ -98,6 +88,7 @@ export default function CanvasView({ notify }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [savedAt, setSavedAt] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('unsaved');
   const [showSnippets, setShowSnippets] = useState(false);
   const [snippetTarget, setSnippetTarget] = useState(null);
   const [menu, setMenu] = useState(null);
@@ -107,6 +98,7 @@ export default function CanvasView({ notify }) {
   const [showMap, setShowMap] = useState(false);
   const [hideEdges, setHideEdges] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(true);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
@@ -119,6 +111,20 @@ export default function CanvasView({ notify }) {
      每次 pushHistory/undo/redo 后同步这两位。 */
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const saveQueueRef = useRef(null);
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = createCanvasSaveQueue({
+      save: (snapshot) => api.updateCanvas(snapshot.canvasId, {
+        title: snapshot.title, canvas: snapshot.canvas,
+      }),
+      onState: (state, _snapshot, error) => {
+        setSaveStatus(state);
+        if (state === 'unsaved') setSavedAt(null);
+        if (state === 'saved') setSavedAt(new Date());
+        if (state === 'error') notify(`保存失败：${error.message}`, true);
+      },
+    });
+  }
   const { screenToFlowPosition, setViewport: setFlowViewport, fitView } = useReactFlow();
 
   const onSelectionChange = useCallback(({ nodes: sel }) => {
@@ -133,6 +139,7 @@ export default function CanvasView({ notify }) {
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
 
   const loadCanvas = useCallback(async (id) => {
+    await saveQueueRef.current.flush();
     const data = await api.getCanvas(id);
     const c = data.canvas || { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
     skipSave.current = true;
@@ -145,7 +152,10 @@ export default function CanvasView({ notify }) {
     past.current = []; future.current = [];
     setCanUndo(false); setCanRedo(false);
     setSavedAt(new Date());
+    setSaveStatus('saved');
   }, [setNodes, setEdges, setFlowViewport]);
+
+  useEffect(() => () => { void saveQueueRef.current.flush().catch(() => {}); }, []);
 
   useEffect(() => {
     (async () => {
@@ -166,14 +176,8 @@ export default function CanvasView({ notify }) {
   useEffect(() => {
     if (!canvasId) return;
     if (skipSave.current) { skipSave.current = false; return; }
-    const t = setTimeout(async () => {
-      try {
-        await api.updateCanvas(canvasId, { title, canvas: { nodes, edges, viewport } });
-        setSavedAt(new Date());
-      } catch (e) { notify(`保存失败：${e.message}`, true); }
-    }, 900);
-    return () => clearTimeout(t);
-  }, [nodes, edges, viewport, title, canvasId, notify]);
+    saveQueueRef.current.schedule({ canvasId, title, canvas: { nodes, edges, viewport } });
+  }, [nodes, edges, viewport, title, canvasId]);
 
   const pushHistory = useCallback(() => {
     past.current.push({ nodes: structuredClone(nodesRef.current), edges: structuredClone(edgesRef.current) });
@@ -318,11 +322,9 @@ export default function CanvasView({ notify }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 
-  const run = useCallback(async (targetIds) => {
+  const run = useCallback(async (targetIds, { fresh = false } = {}) => {
     const targets = targetIds?.length ? targetIds : [];
-    const affected = targets.length
-      ? new Set(targets.flatMap((id) => [...upstreamOf(id, edgesRef.current)]))
-      : null;
+    const affected = targets.length ? new Set(targets) : null;
     setRunning(true);
     setProgress({ done: 0, total: 0 });
     setNodes((nds) => nds.map((n) => {
@@ -338,8 +340,10 @@ export default function CanvasView({ notify }) {
     try {
       const res = await api.run({
         canvasId,
+        scriptId: script?.id || null,
         canvas: { nodes: nodesRef.current, edges: edgesRef.current, viewport: viewportRef.current },
         nodeIds: targets,
+        freshNodeIds: fresh ? targets : [],
       }, {
         onEvent: ({ event, data }) => {
           if (event === 'node') {
@@ -357,6 +361,8 @@ export default function CanvasView({ notify }) {
             if (data.tokens != null) patch.tokens = data.tokens;
             if (data.scriptTitle) patch.scriptTitle = data.scriptTitle;
             if (data.promptUsed) patch.promptUsed = data.promptUsed;
+            if (data.upstreamTask) patch.upstreamTask = data.upstreamTask;
+            if (data.generationPhase) patch.generationPhase = data.generationPhase;
             applyPatch(data.nodeId, patch);
           } else if (event === 'progress') {
             setProgress({ done: data.done, total: data.total });
@@ -379,10 +385,11 @@ export default function CanvasView({ notify }) {
       setRunning(false);
       setTimeout(() => setProgress({ done: 0, total: 0 }), 2000);
     }
-  }, [canvasId, setNodes, notify]);
+  }, [canvasId, script?.id, setNodes, notify]);
 
   const createCanvas = useCallback(async (withSample) => {
     try {
+      await saveQueueRef.current.flush();
       const created = await api.createCanvas({ title: withSample ? '示例画布' : '未命名画布' });
       if (withSample) await api.updateCanvas(created.id, { canvas: starterGraph() });
       setCanvases(await api.listCanvases());
@@ -395,6 +402,7 @@ export default function CanvasView({ notify }) {
     if (!canvasId) return;
     if (!window.confirm('确定删除当前画布？该操作不可恢复。')) return;
     try {
+      await saveQueueRef.current.flush();
       await api.deleteCanvas(canvasId);
       const list = await api.listCanvases();
       setCanvases(list);
@@ -492,7 +500,7 @@ export default function CanvasView({ notify }) {
   ), []);
 
   const ctx = useMemo(() => ({
-    updateNode, deleteNode, runNode: (id) => run([id]), openSnippets, refsOf,
+    updateNode, deleteNode, runNode: (id, options) => run([id], options), openSnippets, refsOf,
     copy: (t) => { navigator.clipboard.writeText(t || ''); notify('已复制到剪贴板'); },
     textModels: modelGroups?.text || [],
     textDefaultModel,
@@ -517,7 +525,8 @@ export default function CanvasView({ notify }) {
           </svg>
         </span>
         <input className="cv-name" style={{ width: 160 }} value={title} placeholder="画布名称" onChange={(e) => setTitle(e.target.value)} />
-        <select className="cv-picker" style={{ width: 150 }} value={canvasId || ''} onChange={(e) => loadCanvas(e.target.value)}>
+        <select className="cv-picker" style={{ width: 150 }} value={canvasId || ''}
+          onChange={(e) => loadCanvas(e.target.value).catch((error) => notify(`切换画布失败：${error.message}`, true))}>
           {canvases.map((c) => <option key={c.id} value={c.id}>{c.title}（{c.node_count ?? 0} 节点）</option>)}
         </select>
         <button className="ghost tiny" title="新建画布" onClick={() => createCanvas(false)}>＋</button>
@@ -535,16 +544,20 @@ export default function CanvasView({ notify }) {
         )}
         <button className="ghost tiny" title="撤销 (Ctrl+Z)" onClick={undo} disabled={!canUndo}>↶</button>
         <button className="ghost tiny" title="重做 (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}>↷</button>
-        <span className="pill">{savedAt ? `已保存 ${savedAt.toLocaleTimeString('zh-CN')}` : '未保存'}</span>
-        <button className="ghost" title="打开 Agent 应用" onClick={() => setView?.('agents')}>
+        <span className="pill">{saveStatus === 'saved' && savedAt
+          ? `已保存 ${savedAt.toLocaleTimeString('zh-CN')}`
+          : ({ saving: '保存中…', error: '保存失败', unsaved: '未保存' })[saveStatus] || '未保存'}</span>
+        {saveStatus === 'error' && <button className="ghost tiny" title="重试保存"
+          onClick={() => saveQueueRef.current.flush().catch(() => {})}>重试</button>}
+        <button className={`ghost ${showAssistant ? 'on' : ''}`} title={showAssistant ? '收起 Agent 与任务面板' : '打开 Agent 与任务面板'} onClick={() => setShowAssistant((value) => !value)}>
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ marginRight: 5, verticalAlign: -2 }}>
             <path d="M12 2v3M7 7h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM9 12h.01M15 12h.01M9.5 16h5" />
           </svg>
-          Agent
+          Agent 与任务
         </button>
       </div>
 
-      <div className="canvas-wrap" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
+      <div className={`canvas-wrap ${showAssistant ? 'cv-with-assistant' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
         onClick={() => setMenu(null)} onDoubleClickCapture={onPaneDoubleClick}>
         <ReactFlow
           nodes={nodes}
@@ -694,6 +707,7 @@ export default function CanvasView({ notify }) {
           onClose={() => setShowSnippets(false)}
           notify={notify}
         />
+        <CanvasAssistantPanel open={showAssistant} onClose={() => setShowAssistant(false)} notify={notify} />
       </div>
     </CanvasCtx.Provider>
   );

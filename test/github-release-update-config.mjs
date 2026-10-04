@@ -12,6 +12,8 @@ const updater = fs.readFileSync(path.join(root, 'electron/updaterController.js')
 
 assert.equal(packageJson.build?.win?.target?.[0]?.target, 'nsis',
   'Windows releases must use an auto-updatable NSIS installer');
+assert.equal(packageJson.build?.win?.artifactName, 'weave-canvas-setup-${version}.${ext}',
+  'Windows installer name must match the name referenced by latest.yml for auto-updates');
 assert.equal(packageJson.build?.publish?.[0]?.provider, 'github',
   'release artifacts should publish to GitHub Releases');
 assert.equal(packageJson.build?.asar, true, 'application resources should be packed into app.asar');

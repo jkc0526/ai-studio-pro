@@ -73,6 +73,24 @@ ffmpeg 查找顺序：`WEAVE_FFMPEG` → `data/runtime/ffmpeg/` → `ffmpeg-stat
 
 OpenAI 官方 · Anthropic Claude · Google Gemini · 硅基流动 · 阿里云百炼 · 火山方舟 · DeepSeek · 月之暗面 Kimi · 智谱 GLM · OpenRouter · 本地 Ollama · 自建中转站（选中后只需填 Key）。
 
+### 外加：豆包（网页版号池）——本地桥接，免费额度出视频
+
+除上述预设外，每次启动还会自动注册一个 **「豆包（网页版号池）」** 供应商，指向本地桥接服务
+[doubao-bridge](../doubao-bridge/README.md)：用**豆包网页版的免费额度**出视频，支持**多账号号池**
+（每个账号每天 10 次，自动轮询、失败自动换号）。
+
+- 软件启动时会自动拉起桥接服务（可在「设置 → 豆包号池」里关闭或停止）
+- 该页签可管理账号：新增、探活、冷却、恢复、删除，以及一键把「视频模型」用途切到号池
+- **额度按模型分档消耗**：Seedance 2.0 Fast 基准（5 秒 1 次）、2.0 是 2 倍、**2.5 是 5 倍**
+  （用 2.5 时每账号每天 10 次只够出 2 条）。号池面板里直接列出各档位与消耗
+- 账号需要各自单独登录一次（一个账号一个独立浏览器 profile —— 同一浏览器多标签页会共享 Cookie 互相顶掉）
+- 未找到桥接目录时不会影响软件其它功能，只是该供应商不可用
+
+模型清单以桥接的 `config.json` 为单一数据源（启动时同步到该供应商的模型表），
+顺序按消耗从低到高——宿主会用第一个视频模型作默认值，避免默认选中 5 倍档。
+
+> 详细设计与使用说明见 [`doubao-bridge/docs/号池设计与使用.md`](../doubao-bridge/docs/号池设计与使用.md)。
+
 ### 自定义 API 接口（可接任何 REST）
 
 在「设置 → 自定义接口」里填：
@@ -96,21 +114,22 @@ OpenAI 官方 · Anthropic Claude · Google Gemini · 硅基流动 · 阿里云�
 ```
 weave-canvas/
 ├─ server/
-│  ├─ index.js      路由（画布/剧本/镜头/角色/风格/任务/配置/供应商/自定义接口）
+│  ├─ index.js      路由（画布/剧本/镜头/角色/风格/任务/配置/供应商/自定义接口/豆包号池）
 │  ├─ db.js         node:sqlite 建表、迁移、风格与供应商种子数据
 │  ├─ endpoint.js   统一接口适配层（模板渲染 · 字段路径取值 · 异步轮询 · 可用性探测）
 │  ├─ ai.js         三类用途的配置解析与调用（文本/图像/视频）
 │  ├─ graph.js      节点画布：拓扑排序 + 工作流执行引擎
 │  ├─ pipeline.js   流水线：拆分镜、角色提取、提示词拼装、批量任务队列
 │  ├─ video.js      视频封装 + 模型分类 + 媒体登记
+│  ├─ doubaoBridge.js  豆包号池桥接：生命周期管理 + HTTP 代理（独立进程，不侵入主逻辑）
 │  └─ export.js     ffmpeg 成片拼接 + SRT 字幕
 ├─ src/
 │  ├─ App.jsx       外壳：左侧栏 + 顶栏 + 视图切换
-│  ├─ components/   Sidebar · SettingsModal（用途/供应商/自定义接口三页签）
+│  ├─ components/   Sidebar · SettingsModal（用途/供应商/自定义接口/豆包号池四页签）· DoubaoPoolPanel
 │  └─ views/        HomeView(创作台) · ScriptView · StoryboardView · CharactersView · CanvasView · MediaView · StylesView
-├─ electron/        main.js（桌面主进程）· build.mjs（打包脚本）
+├─ electron/        main.js（桌面主进程，兼管桥接启停）· build.mjs（打包脚本）
 ├─ scripts/         release.mjs（升版本 + CHANGELOG + git 标签）
-├─ test/            接口探测、CDP 界面验收、站点布局研究脚本
+├─ test/            接口探测、CDP 界面验收、站点布局研究、豆包集成测试脚本
 └─ data/            weave.db + outputs/（运行时生成，已在 .gitignore 中）
 ```
 

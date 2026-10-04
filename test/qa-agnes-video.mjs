@@ -39,6 +39,7 @@ function exactKeys(name, body, allowed) {
     `多余=[${extra}] 缺失=[${missing}] 实际=[${keys(body)}]`);
 }
 const agv = (vars) => builtinSpec({ kind: 'video', protocol: 'agnes-video', baseURL: BASE, model: MODEL, vars });
+const agv20 = (vars) => builtinSpec({ kind: 'video', protocol: 'agnes-video', baseURL: BASE, model: 'agnes-video-v2.0', vars });
 
 /* ============================================================
    A. agnes-video 协议规格
@@ -69,6 +70,23 @@ check('A PROTOCOLS 含 agnes-video', PROTOCOLS.some((p) => p.key === 'agnes-vide
   const k = agv({ prompt: 'x', mode: 'keyframe', firstFrame: 'https://x.test/a.png', lastFrame: 'https://x.test/b.png', seconds: '5' }).body;
   check('A keyframe 携 first_frame+last_frame、无 images/size',
     k.first_frame === 'https://x.test/a.png' && k.last_frame === 'https://x.test/b.png' && !has(k, 'images') && !has(k, 'size'));
+}
+{
+  const ref = agv20({ prompt: 'x', mode: 'reference', images: ['https://x.test/a.png', 'https://x.test/b.png'], seconds: 5, ratio: '16:9', size: '720P' }).body;
+  check('A Agnes Video v2.0 将多参考图放入 extra_body.image，且时长/比例转换为原生参数',
+    ref.mode === 'multi_reference' && eq(ref.extra_body?.image, ['https://x.test/a.png', 'https://x.test/b.png'])
+      && !has(ref, 'images') && !has(ref, 'seconds') && !has(ref, 'aspect_ratio')
+      && ref.width === 1280 && ref.height === 720 && ref.num_frames === 121 && ref.frame_rate === 24,
+    JSON.stringify(ref));
+  const frame = agv20({ prompt: 'x', mode: 'keyframe', firstFrame: 'https://x.test/a.png', lastFrame: 'https://x.test/b.png' }).body;
+  check('A Agnes Video v2.0 首尾帧放入 extra_body.image，使用 keyframes 模式',
+    frame.mode === 'keyframes' && eq(frame.extra_body?.image, ['https://x.test/a.png', 'https://x.test/b.png'])
+      && frame.extra_body?.mode === 'keyframes' && !has(frame, 'first_frame') && !has(frame, 'last_frame'), JSON.stringify(frame));
+  const oneFrame = agv20({ prompt: 'x', mode: 'keyframe', firstFrame: 'https://x.test/a.png' }).body;
+  check('A Agnes Video v2.0 单首帧使用 image 字段，不误发 keyframes',
+    oneFrame.image === 'https://x.test/a.png' && !has(oneFrame, 'mode') && !has(oneFrame, 'first_frame'), JSON.stringify(oneFrame));
+  check('A Agnes Video v2.0 将 text 转为 ti2vid', agv20({ prompt: 'x', mode: 'text' }).body.mode === 'ti2vid');
+  check('A 2.5-flash 仍保留 reference 模式值', agv({ prompt: 'x', mode: 'reference' }).body.mode === 'reference');
 }
 {
   // seconds 收敛在协议层也做了
@@ -307,6 +325,19 @@ async function runVideo(data, mediaRefs = []) {
   const { post } = await runVideo({ mode: 'omni', duration: 8, resolution: '1080p', ratio: '9:16' }, refs6);
   check('C omni：mode=reference、images 截断 5、无 first_frame、无 size',
     post.body.mode === 'reference' && post.body.images?.length === 5 && !has(post.body, 'first_frame') && !has(post.body, 'size'));
+}
+{
+  const { post } = await runVideo({ modelId: 'agnes-video-v2.0', mode: 'omni', duration: 5 }, refs6);
+  check('C Agnes v2.0 画布节点将全能参考发为 multi_reference',
+    post.body.model === 'agnes-video-v2.0' && post.body.mode === 'multi_reference'
+      && post.body.extra_body?.image?.length === 5 && !has(post.body, 'images'),
+    JSON.stringify(post?.body));
+}
+{
+  const { post } = await runVideo({ modelId: 'agnes-video-v2.0', mode: 'image', duration: 5 }, [{ key: '图片1', type: 'image', url: 'https://x.test/1.png' }]);
+  check('C Agnes v2.0 画布单图模式使用 image 字段',
+    post.body.model === 'agnes-video-v2.0' && post.body.image === 'https://x.test/1.png' && !has(post.body, 'first_frame'),
+    JSON.stringify(post?.body));
 }
 {
   const { post } = await runVideo({ mode: 'image', duration: 3, resolution: '720p', ratio: '16:9' }, [{ key: '图片1', type: 'image', url: 'https://x.test/1.png' }]);

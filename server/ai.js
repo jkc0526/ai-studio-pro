@@ -81,9 +81,16 @@ export async function callImage(arg, { model, providerId, prompt, image, images,
    - audios：可选的音频参考 URL 列表                                            */
 export async function callVideo(arg, {
   model, providerId, prompt, image, duration = 5, ratio, resolution,
-  mode, referenceImages, firstFrame, lastFrame, audios, size,
+  mode, referenceImages, firstFrame, lastFrame, audios, size, resumeTask, onTask,
 } = {}) {
-  const t = resolveTarget('video', arg, { model, providerId });
+  const recovering = resumeTask?.status === 'accepted' && (resumeTask.id || resumeTask.resultUrl);
+  const t = resolveTarget('video', arg, { model: recovering ? resumeTask.model || model : model,
+    providerId: recovering ? resumeTask.providerId || providerId : providerId });
+  const origin = new URL(t.baseURL).origin;
+  if (recovering && ((resumeTask.origin && resumeTask.origin !== origin)
+    || (resumeTask.protocol && resumeTask.protocol !== t.protocol))) {
+    throw new Error('原视频任务的供应商地址或协议已变更，请恢复原配置后继续获取');
+  }
   // 旧的剧本分镜单图/批量接口只传 image。Agnes 和 Seedance 都需要声明
   // 生成模式；仅对这两类已知模式协议做推断，保留其他供应商的旧请求格式。
   const supportsMode = !t.custom && (t.protocol === 'agnes-video'
@@ -112,7 +119,8 @@ export async function callVideo(arg, {
     ratio,
     image,
   });
-  const out = await execute({ spec, apiKey: t.apiKey, kind: 'video' });
+  const out = await execute({ spec, apiKey: t.apiKey, kind: 'video', resumeTask: recovering ? resumeTask : null, onTask,
+    taskContext: { providerId: t.provider?.id || null, model: t.model, protocol: t.protocol, origin } });
   return { url: out.url, sourceUrl: out.sourceUrl, model: t.model, raw: out.raw, polls: out.polls };
 }
 
