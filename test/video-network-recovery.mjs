@@ -183,13 +183,18 @@ try {
       return video();
     };
     try {
-      const response = await originalFetch(local + '/api/run', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input, stream: true }),
-        signal: AbortSignal.timeout(2000) });
-      const reader = response.body.getReader();
+      // 2 秒兜底超时只守护「等首个 keepalive」阶段；拿到 ping 后必须清掉，
+      // 否则轮询完成前的任何读帧都会被 abort 拒绝，作为未捕获异常击穿整个测试进程
+      const keepaliveCtrl = new AbortController();
+      const keepaliveTimer = setTimeout(() => keepaliveCtrl.abort(), 2000);
+      let reader = null;
       const decoder = new TextDecoder();
       let text = '';
       try {
+        const response = await originalFetch(local + '/api/run', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...input, stream: true }),
+          signal: keepaliveCtrl.signal });
+        reader = response.body.getReader();
         while (!text.includes(': ping')) {
           const chunk = await reader.read();
           assert.equal(chunk.done, false, 'generation stream must remain open');
@@ -197,9 +202,11 @@ try {
         }
       } catch (error) {
         assert.fail(`Idle generation stream had no keepalive: ${error.message}`);
+      } finally {
+        clearTimeout(keepaliveTimer);
       }
       releasePoll();
-      while (true) {
+      while (reader) {
         const chunk = await reader.read();
         if (chunk.done) break;
         text += decoder.decode(chunk.value);
