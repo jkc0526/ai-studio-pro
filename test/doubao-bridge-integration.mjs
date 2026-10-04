@@ -112,8 +112,8 @@ async function main() {
     ok('状态接口可用', st.json?.success === true);
     // 本机可能没有桥接目录（如 CI 构建机）：桥接相关用例整体跳过，不能算失败
     const bridgeFound = st.json?.data?.found === true;
-    ok('找到桥接目录', bridgeFound, bridgeFound ? (st.json?.data?.dir || '') : 'SKIP：本机无桥接目录');
-    if (!bridgeFound) console.log('\n  （SKIP）本机没有豆包桥接目录，桥接相关用例全部跳过');
+    if (bridgeFound) ok('找到桥接目录', true, st.json?.data?.dir || '');
+    else console.log('\n  （SKIP）本机没有豆包桥接目录，桥接相关用例全部跳过');
     if (bridgeFound) {
     const upDeadline = Date.now() + 25000;
     while (Date.now() < upDeadline) {
